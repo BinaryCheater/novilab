@@ -2,212 +2,354 @@
 
 Status: Draft
 
-This spec discusses candidate tools and module boundaries. It is not an implementation plan, file layout, data model, or milestone schedule.
+This spec is a technical tooling discussion document. It organizes candidate modules, external projects, integration boundaries, and implementation approaches. It is not a final decision, detailed file layout, data model, or milestone schedule.
 
-## Purpose
+## Goal
 
 Proposal:
 
-Novi should be built as a platform core with replaceable execution kernels and optional modules.
+Novi should be built as a platform core with replaceable execution kernels, tool modules, workers, UI surfaces, and channel adapters.
 
-The platform core should own:
+Novi Core should own:
 
 - skills;
 - sessions;
 - runs;
 - context;
-- tool registry and policy;
+- tool registry;
+- tool policy;
 - artifacts;
 - memory flow;
 - approvals;
-- audit state.
+- audit state;
+- agent participants;
+- module registration.
 
-External tools and frameworks should provide execution or integration capability, but should not become the source of truth for Novi state.
+External projects may provide execution, retrieval, browser, coding, simulation, training, or UI capability. They should not become the source of truth for Novi sessions, runs, memory, artifacts, permissions, or policies.
 
 ## Selection Principles
 
 Proposal:
 
-Choose tools that:
+Prefer external tools that:
 
 - fit local-first research, coding, training, simulation, and physical-AI workflows;
 - can be wrapped behind Novi-owned interfaces;
-- support inspection, approval, audit, and replay;
-- do not force Novi into a single vendor, model, framework, or runtime;
-- can start simple and be replaced later.
+- support inspection, approval, audit, resume, and replay;
+- allow vendor, model, framework, or runtime replacement;
+- can start with minimal capability and grow later;
+- can express side effects and risk clearly.
 
-Avoid tools that require Novi to give up ownership of sessions, runs, memory, artifacts, permissions, or policy.
+Avoid frameworks that require Novi to give up ownership of core state. An external tool may execute work, but it should not replace Novi's run ledger, tool policy, artifact store, or memory review flow.
 
-## Core Language Direction
+## Module Overview
 
 Proposal:
 
-Python should be the first core runtime because the expected domains include research, ML, robotics, simulation, training, scientific Python, ROS, and local automation.
+| Module / capability | Responsibility in Novi | Candidate external projects | Integration boundary |
+|---|---|---|---|
+| Core runtime | Platform state for sessions, runs, skills, tools, artifacts, policy, audit | Python, Pydantic, SQLite, JSONL, filesystem | Novi owns state; external frameworks use authorized interfaces |
+| Agent kernel | Execute runs, stream events, request tools, pause/resume | DeepAgents, LangGraph, Simple Kernel, Pi Agent Core | Kernel does not own Novi records; tool calls go through Tool Runtime |
+| Local project tools | Filesystem, git, shell, Python/notebook execution | pathlib, GitPython/dulwich, subprocess/Docker, nbclient, ipykernel | Policy-gated by default; writes and shell are workspace-scoped |
+| Research/search | Search, web fetch, source extraction, citation evidence | Tavily, SearXNG, Brave Search API, httpx, trafilatura, markdownify, Crawl4AI | Search/fetch outputs become artifacts; claims need source refs |
+| Browser automation | Dynamic pages, logged-in pages, screenshots, web interaction | Playwright, browser-use, Browser MCP | Browser actions are visible tools; screenshots/HTML/downloads become artifacts |
+| Deep research | Multi-round search, reading, evidence tables, synthesis reports | DeepAgents + LangGraph, search modules, web fetch, browser module, PDF parser, optional hosted deep-research providers | Runs through Novi; sources and reports become auditable artifacts |
+| Documents/PDF | Parse PDFs, pages, papers, reports | PyMuPDF, pypdf, unstructured, trafilatura, LlamaIndex/Haystack later | Parser is a module tool; it does not write memory directly |
+| Memory | Memory candidates, review, commit, retrieval | filesystem/Markdown/JSONL, SQLite, later pgvector/Qdrant | Memory system is specified separately; this doc only sets tool boundaries |
+| CLI | Init, inspect, review, approve, run control | Typer, Rich, prompt-toolkit, questionary | First control surface; must explain state and audit |
+| TUI | Run timeline, tool calls, approvals, memory candidates, artifacts | Textual, Rich | Enhances CLI after state model stabilizes; does not change core state |
+| Web/API | Dashboard, HTTP API, webhook, future collaboration | FastAPI, Starlette, React/Next.js later | Surface/API only; does not store authoritative state separately |
+| Channels | Telegram/Discord/Slack/Webhook entrypoints | python-telegram-bot, discord.py, slack-sdk, FastAPI webhook | Channels route, ask, approve, inspect, or enqueue; high-risk work returns to policy |
+| MCP client | External MCP tools/resources | official MCP SDKs, langchain-mcp-adapters | MCP is an adapter; MCP tools still go through Novi policy/audit |
+| MCP server | Expose Novi to external agents/tools | official MCP SDKs | Deferred until Novi records/APIs stabilize |
+| Project participants | Multiple human participants in one project | local identity, GitHub/GitLab later, SSO later | Record identity, role, permission, ownership, review, audit attribution |
+| Cowork | Assign scoped session/run work to humans or workers | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab, Linear/Jira later | Coworker is a scoped participant; tasks, context, permissions, outputs, and review are recorded by Novi |
+| Coding workers | External code implementation, refactor, test, review | Codex, Claude Code, OpenHands | Worker participates in a Novi run; diffs/logs/results become artifacts |
+| Observability | Traces, LLM calls, tool latency, evals | OpenTelemetry, Langfuse, Phoenix, LangSmith | Tracing does not replace RunLedger |
+| Physical-AI modules | ROS, simulation, training, datasets, evaluation, multimodal logs | ROS/ROS2, Isaac Sim, MuJoCo, LeRobot, Rerun, TensorBoard, MLflow/W&B | Modules only; Novi is not robot-first and ROS is not the base layer |
 
-TypeScript can still be useful later for:
+## Core Language And Runtime
+
+Proposal:
+
+Python should be the first core runtime because Novi's expected domains include research, ML, robotics, simulation, training, scientific Python, ROS, and local automation.
+
+TypeScript remains useful later for:
 
 - web control plane;
 - browser-heavy modules;
 - Pi or other TypeScript-native agent kernels;
-- frontend tooling.
+- frontend tooling;
+- some MCP/browser ecosystem adapters.
 
-This is a runtime preference, not a permanent product constraint.
+This is a priority, not a permanent constraint. The important point is that Novi Core state and interfaces allow other runtimes to connect through adapters.
 
 ## Agent Kernel Candidates
 
 Proposal:
 
-Novi should define an adapter boundary for agent kernels. A kernel may execute a run, stream events, request tools, pause for approval, and resume work. It should not own Novi records.
+Novi should define an agent kernel adapter boundary. A kernel can execute a run, stream events, request tools, wait for approval, and resume work. It must not own Novi records.
 
-### DeepAgents + LangGraph
+| Kernel | Good for | Not good for | Current view |
+|---|---|---|---|
+| Simple Kernel | Core loop, tests, no-framework validation | Complex reasoning or research | Keep it to avoid early framework lock-in |
+| DeepAgents + LangGraph | Research, analysis, experiment design, long-running workflows, subagents | Owning memory/artifacts/policy directly | First serious kernel candidate |
+| Pi Agent Core | Interactive local coding-like sessions, TS-side experiments | Default source of truth | Later spike |
+| Codex/Claude Code/OpenHands | External coding worker | Replacing Novi core runtime | Integrate as worker/module |
 
-Recommended candidate for the first serious research/experiment kernel.
+### What DeepAgents + LangGraph Provide
 
-Useful for:
+DeepAgents is closer to an agent harness for complex multi-step tasks. It can provide:
 
-- complex multi-step tasks;
 - planning and task decomposition;
-- context management through working files;
+- multi-step execution loops for research and analysis runs;
 - subagents for context isolation;
-- human-in-the-loop approval flows;
-- durable execution and resume through LangGraph;
-- model-provider flexibility.
+- filesystem working memory for drafts and intermediate notes;
+- human-in-the-loop approval;
+- tool permission patterns;
+- multi-model and multi-provider flexibility.
 
-Boundary:
+LangGraph is closer to a stateful agent/workflow runtime. It can provide:
+
+- durable execution;
+- checkpoints;
+- pause/resume;
+- interrupt for user input or approval;
+- streaming events;
+- long-running agent state management.
+
+Boundaries:
 
 - DeepAgents subagents are execution-level helpers, not automatically Novi platform agents.
-- DeepAgents tools should be wrappers around Novi Tool Runtime.
-- DeepAgents memory or filesystem state should not directly become Novi long-term memory or artifacts without Novi review/registration.
+- LangGraph checkpoints are execution recovery state, not Novi RunLedger.
+- DeepAgents filesystem is working memory, not Novi ArtifactStore or long-term memory.
+- DeepAgents tools must wrap Novi Tool Runtime and must not receive high-risk native tools directly.
+- Novi still owns sessions, runs, tools, artifacts, memory, policy, and audit.
 
-### Simple Kernel
-
-Recommended as a minimal fallback and test kernel.
-
-Useful for:
-
-- running the core loop without external agent frameworks;
-- deterministic tests;
-- validating sessions, runs, tool policy, artifacts, and inspection;
-- avoiding early lock-in.
-
-### Pi Agent Core
-
-Potential later spike for interactive local coding-agent-like workflows.
-
-Useful for:
-
-- local interactive agent experience;
-- embedded coding-style sessions;
-- TypeScript-side experiments.
-
-Boundary:
-
-- treat Pi session state as execution state, not Novi source of truth;
-- route tool calls through Novi Tool Runtime;
-- do not make Pi the default foundation before it proves stable for Novi's needs.
-
-### Codex, Claude Code, OpenHands
-
-Treat as external coding workers rather than Novi's core runtime.
-
-Useful for:
-
-- implementation tasks;
-- refactors;
-- code review;
-- tests and patch generation.
-
-Boundary:
-
-- Novi creates and audits a coding run;
-- the worker produces diffs, logs, and artifacts;
-- Novi records the result, policy decisions, and memory candidates.
-
-## Tool And Module Groups
+## Research, Web Search, And Deep Research
 
 Proposal:
 
-Modules should expose tools, resources, observations, artifacts, and policies. The first module discussions should focus on boundaries rather than implementation details.
+Novi should compose research capabilities from modules rather than depend on one search API.
 
-### Local Project Modules
+| Capability | Responsibility | Candidate external projects | Output |
+|---|---|---|---|
+| `search.query` | Keyword search and candidate sources | Tavily, Brave Search API, SearXNG, SerpAPI | Search result artifact |
+| `web.fetch` | Static page fetch, HTML/text capture | httpx, requests, trafilatura, markdownify | Fetched page artifact |
+| `browser.open/read` | Dynamic pages, JS-rendered pages, logged-in pages | Playwright, browser-use, Browser MCP | Screenshot/HTML/text artifacts |
+| `pdf.parse` | PDF and paper parsing | PyMuPDF, pypdf, unstructured | Document text artifact |
+| `source.extract` | Extract claims, quotes, metadata, citations | Custom parser, LlamaIndex/Haystack later | Source note/evidence artifact |
+| `deep_research.run` | Multi-round search, reading, evidence table, synthesis report | DeepAgents + LangGraph orchestrating the above tools; optional hosted deep-research provider adapter | Research report, evidence table, source bundle |
 
-Candidate modules:
+Recommended deep research flow:
 
-- filesystem;
-- git;
-- shell sandbox;
-- python execution;
-- notebook execution.
+```text
+research objective
+→ build context pack
+→ plan search strategy
+→ search.query
+→ web.fetch / browser.open / pdf.parse
+→ source.extract
+→ evidence table
+→ synthesis report
+→ artifacts registered
+→ memory candidates proposed only through memory flow
+```
 
-These are important because they support local-first work and coding/research workflows. They also carry real risk, so they should be policy-gated.
+Principles:
 
-### Research Modules
+- Deep research is a run type or skill-driven workflow, not an external black box.
+- A hosted deep-research provider can be integrated, but only as an adapter whose output becomes Novi artifacts and evidence records.
+- Important claims should trace back to source artifacts.
+- Browser, download, login, paid access, and high-frequency crawling need policy.
+- Search providers should remain replaceable.
 
-Candidate modules:
+## Memory Tool Boundaries
 
-- search;
-- web fetch;
-- browser automation;
-- PDF/document parsing;
-- citation and source extraction.
+Proposal:
 
-Hosted search can be useful early, but self-hosted or replaceable search should remain possible.
+The memory system will be specified separately. This spec only defines tooling boundaries.
 
-### MCP Modules
+Candidate storage/retrieval tools:
 
-MCP should be treated as an external tool/resource adapter, not the foundation of Novi.
+- Markdown/JSONL for local-readable memory notes and episodic/procedural records;
+- SQLite for local indexes, filtering, and review queues;
+- pgvector/Qdrant for later vector retrieval;
+- LlamaIndex/Haystack for later document indexing and retrieval pipelines.
 
-Early direction:
+Boundaries:
 
-- add MCP client later when the core tool runtime is stable;
-- wrap MCP tools through Novi policy, approval, and audit;
-- consider MCP server support only after Novi records and APIs are stable.
+- Agents or kernels may propose memory candidates.
+- External retrieval libraries may help search memory.
+- No external library may bypass review flow and write long-term memory directly.
+- Memory should reference artifacts/evidence rather than copy large unstable content.
 
-### Coding Worker Modules
+## CLI, TUI, Web, And Channels
 
-Candidate workers:
+Proposal:
 
-- Codex;
-- Claude Code;
-- OpenHands.
+These are control surfaces, not the core source of truth.
 
-These should be modeled as external workers that operate inside a Novi run, not as replacements for Novi control-plane state.
+| Surface | Responsibility | Candidate external projects | Integration boundary |
+|---|---|---|---|
+| CLI | Init, run, inspect, approve, memory review, tool inspect | Typer, Rich, prompt-toolkit, questionary | First priority; must be explainable and auditable |
+| TUI | Timeline, tool calls, approval queue, artifact tree, memory candidates | Textual, Rich | Built after CLI stabilizes; uses Core API |
+| Web/API | Dashboard, project management, collaboration, webhook | FastAPI, Starlette, React/Next.js later | Deferred; does not duplicate core state |
+| IM Channels | Status, inspect, approve, enqueue run | Telegram, Discord, Slack, webhook | High-risk actions cannot execute directly from IM |
 
-### Physical-AI Modules
+Recommendations:
 
-Candidate modules:
+- CLI should be the first control plane.
+- TUI fits after run/event/tool state stabilizes.
+- Channel adapters should initially allow only ask/status/inspect/approve/enqueue.
+- Web dashboard should not come before core state and inspectability.
 
-- ROS;
-- simulation;
-- training;
-- dataset;
-- evaluation;
-- Rerun or multimodal logging.
+## Tool Runtime And Policy
 
-These should stay modular. Novi should not become robot-first or make ROS the base layer.
+Proposal:
 
-## Deferred Areas
+All external tool calls should pass through Novi Tool Runtime. Whether a tool comes from DeepAgents, MCP, browser, shell, Codex worker, or channel command, it should enter the same policy/audit path.
+
+| Risk type | Example | Default handling |
+|---|---|---|
+| read-only | Read project files, inspect git diff | Record event |
+| write-local | Write draft, create artifact | Restrict workspace, record diff/artifact |
+| network | Search, fetch, API call | Record URL/provider, rate-limit when needed |
+| shell | Shell command, Python execution | Sandbox, timeout, approval |
+| external side effect | Send message, create issue, submit job | Approval |
+| physical world | ROS action, robot control, real device | Preflight, approval, strong audit |
+
+## MCP Position
+
+Proposal:
+
+MCP is a good tool/resource adapter, but should not be Novi's foundation.
+
+Suggested path:
+
+- build Novi Tool Runtime first;
+- then add MCP client and map MCP tools/resources into Novi tools/resources;
+- route all MCP calls through Novi policy, approval, and audit;
+- discuss MCP server only after Novi records/APIs stabilize.
+
+## Coding Worker Position
+
+Proposal:
+
+Codex, Claude Code, OpenHands, and similar tools fit as coding workers.
+
+They can handle:
+
+- repo inspection;
+- patch generation;
+- refactors;
+- test execution;
+- code review;
+- migration tasks.
+
+Novi should handle:
+
+- creating the coding run;
+- providing the context pack;
+- limiting worker tool/workspace scope;
+- capturing diffs, logs, test results, and artifacts;
+- auditing results;
+- proposing memory candidates.
+
+## Cowork Position
+
+Proposal:
+
+Cowork is Novi's ability to coordinate collaborators inside a project, session, or run. The most important new requirement is not making Codex and other agents chat. It is allowing multiple real human participants in one project and bringing their identity, permissions, ownership, comments, approvals, and audit attribution into Novi.
+
+Collaboration with Codex, Claude Code, OpenHands, or other agents can usually be represented through skills plus worker adapters. They are one coworker type, but they should not define the cowork product surface.
+
+Cowork is not the same as multi-agent chat. It is closer to assigning scoped work inside a session/run to a participant and bringing the result back into Novi for audit.
+
+| Coworker type | Good for | Candidate external projects/interfaces | Novi should record |
+|---|---|---|---|
+| Project participant | Project ownership, session/run ownership, review, approval, approach choice, experiment judgment | Local users, CLI/TUI/Web, GitHub/GitLab, Linear/Jira later | Identity, role, permission, ownership, assignment, decision, comments |
+| Coding worker | Patch, refactor, tests, migration | Codex, Claude Code, OpenHands | Prompt/context, diff, logs, test result, review status |
+| Research worker | Source collection, paper screening, evidence table | DeepAgents subagent, browser/search tools, hosted research adapter | Sources, notes, artifacts, confidence |
+| Experiment worker | Run config, training/sim job, metric collection | Local runner, cluster job, training module | Config, job id, metrics, artifacts |
+| Audit worker | Policy check, artifact completeness, memory evidence review | Auditor agent, static checker, human reviewer | Findings, blocked items, approval state |
+
+Core cowork boundaries:
+
+- a coworker must have a clear assignment;
+- a human participant must have auditable identity;
+- project/session/run/artifact/memory candidates should express ownership or reviewer;
+- a coworker should receive only the minimum required context;
+- a coworker should use only authorized tool scope;
+- coworker output must be registered as artifact, event, comment, decision, or memory candidate;
+- a coworker must not bypass Novi policy for high-risk actions;
+- external worker sessions/logs are not Novi source of truth.
+
+New requirements from multiple human participants:
+
+- permissions: different members can execute, approve, or review different actions;
+- comments: people need comments on runs, artifacts, memory candidates, tool calls, and assignments;
+- review state: pending/requested_changes/approved/rejected-style states are needed;
+- notifications: assignees need review, approval, and task updates;
+- conflict awareness: concurrent edits to specs, summaries, memory, or assignments should be traceable;
+- attribution: important events must record which person or agent triggered them.
+
+Possible UX:
+
+```text
+novi project participant list
+novi project participant add <user>
+novi cowork assign <run_id> --to alice --task "review evidence table"
+novi cowork assign <run_id> --to codex --task "implement patch"
+novi cowork assign <run_id> --to bob --task "review memory candidates"
+novi cowork status <run_id>
+novi cowork inspect <assignment_id>
+novi cowork accept <assignment_id>
+novi cowork reject <assignment_id>
+```
+
+These commands are directional examples, not final CLI design.
+
+## Physical-AI Module Position
+
+Proposal:
+
+Physical-AI capabilities should be a module family, not Novi's base assumption.
+
+| Module | Responsibility | Candidate external projects | Integration boundary |
+|---|---|---|---|
+| ROS | Topics/actions/services, robot state, rosbag | ROS/ROS2 | High risk; needs allowlist, preflight, approval |
+| Simulation | Simulation run, scene/config, result capture | Isaac Sim, MuJoCo, Genesis, PyBullet | Sim-first; preflight before real robot |
+| Training | Training jobs, metrics, checkpoints | PyTorch, Lightning, LeRobot, W&B/MLflow/TensorBoard | Budget, dataset hash, checkpoint policy |
+| Dataset | Dataset index, versions, cleaning, sampling | Hugging Face Datasets, DVC, lakeFS later | Lineage and hash matter |
+| Evaluation | Benchmarks, metrics, reports | pytest, custom evals, lm-eval-like patterns | Eval result is an artifact |
+| Multimodal logs | Trajectories, video, state, visual logs | Rerun, rosbag, TensorBoard | Large files go through artifact store |
+
+## Not Fixed Here
 
 Deferred:
 
-- detailed file structure;
+- detailed file layout;
 - concrete data models;
 - milestone plan;
-- memory system design;
-- TUI design;
-- chat channel integration;
+- internal memory system design;
+- detailed TUI layout;
+- channel identity and permission details;
 - plugin marketplace;
 - full MCP server;
-- robotics execution policy.
+- full robotics execution policy.
 
-These areas are real, but they should be specified separately.
+These are real needs, but they should be specified separately.
 
 ## Open Questions
 
 Open:
 
-1. Should DeepAgents + LangGraph be the first real kernel, with Simple Kernel as the initial validation path?
-2. Which local project modules are required before the first useful demo?
-3. Should hosted search be accepted for early research runs, or should search start as a stub/local adapter?
-4. How should Codex/Claude/OpenHands workers be represented: module, tool, kernel, or worker category?
-5. Which physical-AI module should be discussed first: simulation, training, dataset, ROS, or evaluation?
+1. Should DeepAgents + LangGraph be the first serious kernel, with Simple Kernel as the validation path?
+2. Should the first research/deep-research workflow accept hosted search providers, or prefer self-hosted/stub search?
+3. Should browser automation be an early module, or should early research use only static web fetch?
+4. Should Codex/Claude/OpenHands be represented as one worker category or separate module/tool adapters?
+5. Should cowork first support multiple human project participants, or coding workers?
+6. Should CLI be the first control plane, and when should TUI/Web/Channels enter discussion?
+7. What is the minimal memory tooling boundary, and which retrieval choices should wait for the memory spec?
+8. Which Physical-AI module should be discussed first: simulation, training, dataset, ROS, or evaluation?

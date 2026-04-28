@@ -32,6 +32,7 @@ Novi Core
   + artifacts
   + policies
   + context
+  + participants
 ```
 
 外部系统是 modules 或 adapters：
@@ -61,7 +62,8 @@ Novi Core 负责：
 - policy checks 和 approvals；
 - event logs 和 run ledgers；
 - artifact records；
-- memory candidates 和 review state。
+- memory candidates 和 review state；
+- project/session/run participants and ownership。
 
 Modules 提供：
 
@@ -99,6 +101,31 @@ Session 内的一次可审计执行。Run 是执行、回放、证据和检查�
 ### Artifact
 
 Run 产生或引用的持久输出或证据项。Memory 应指向 artifacts，而不是嵌入大量内容。
+
+### Project Participant
+
+参与同一个 Novi project 的人类成员。Project participant 不是 agent，也不是 tool。它代表现实中的人，需要 identity、role、permission、ownership、review responsibility 和 audit attribution。
+
+### Cowork Assignment
+
+把一个 session 或 run 中的明确任务分配给某个 participant 或 worker。Cowork assignment 可以交给人类、Codex/Claude/OpenHands 这类外部 worker，或某个 specialist agent。外部 agent 协作通常应通过 skill + worker adapter 表达；多个人类参与者才是 cowork feature 带来的主要新增产品要求。
+
+## Human Project Collaboration
+
+Proposal:
+
+Novi 应支持一个 project 中有多个人类参与者。多人参与会带来新的核心要求：
+
+- identity：谁发起、审批、评论、接受或拒绝了某个动作；
+- role：owner、maintainer、reviewer、observer 等不同职责；
+- permission：谁能调用高风险工具、接受 memory、审批真实机器人动作；
+- ownership：session、run、artifact、memory candidate、cowork assignment 的负责人；
+- review flow：多个参与者可以评论、请求修改、批准或拒绝；
+- notification：需要把待审批、待 review、失败、完成等事件通知给相关人；
+- conflict handling：多人同时编辑 summary、memory、spec 或 assignment 时需要可追踪；
+- audit attribution：所有重要决定都要能追溯到人或 agent。
+
+V0 不需要完整团队系统，但数据和 UX 不应假设 project 永远只有一个人。
 
 ## Multi-Agent Support
 

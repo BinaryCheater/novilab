@@ -11,9 +11,11 @@ Read in this order:
 1. `v0-scope.md`: narrows the first useful build.
 2. `architecture.md`: defines the core product shape and system boundaries.
 3. `tooling-and-modules.md`: discusses candidate tools and module boundaries.
-4. `data-model.md`: defines durable objects and records.
-5. `cli.md`: defines the first user-facing command surface.
-6. `open-questions.md`: lists decisions that still need confirmation.
+4. `features.md`: summarizes product features and priorities.
+5. `roadmap.md`: outlines directional roadmap phases.
+6. `data-model.md`: defines durable objects and records.
+7. `cli.md`: defines the first user-facing command surface.
+8. `open-questions.md`: lists decisions that still need confirmation.
 
 ## Source Background
 

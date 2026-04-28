@@ -32,6 +32,7 @@ Novi Core
   + artifacts
   + policies
   + context
+  + participants
 ```
 
 External systems are modules or adapters:
@@ -61,7 +62,8 @@ Novi Core owns:
 - policy checks and approvals;
 - event logs and run ledgers;
 - artifact records;
-- memory candidates and review state.
+- memory candidates and review state;
+- project/session/run participants and ownership.
 
 Modules provide:
 
@@ -99,6 +101,31 @@ Reviewable knowledge derived from evidence. Long-term memory should be proposed,
 ### Artifact
 
 A durable output or evidence item produced or referenced by a run. Memory should point to artifacts instead of embedding large content.
+
+### Project Participant
+
+A human member participating in the same Novi project. A project participant is not an agent and not a tool. It represents a real person and needs identity, role, permission, ownership, review responsibility, and audit attribution.
+
+### Cowork Assignment
+
+A scoped task assigned inside a session or run to a participant or worker. A cowork assignment can go to a human, an external worker such as Codex/Claude/OpenHands, or a specialist agent. External agent collaboration should usually be expressed through skills plus worker adapters; multiple human participants are the main new product requirement introduced by cowork.
+
+## Human Project Collaboration
+
+Proposal:
+
+Novi should support multiple human participants in one project. This introduces new core requirements:
+
+- identity: who started, approved, commented on, accepted, or rejected an action;
+- role: owner, maintainer, reviewer, observer, and other responsibilities;
+- permission: who can call high-risk tools, accept memory, or approve real robot actions;
+- ownership: responsible person for sessions, runs, artifacts, memory candidates, and cowork assignments;
+- review flow: participants can comment, request changes, approve, or reject;
+- notification: relevant people need approval, review, failure, and completion updates;
+- conflict handling: concurrent edits to summaries, memory, specs, or assignments must be traceable;
+- audit attribution: important decisions must trace back to a person or agent.
+
+V0 does not need a full team system, but data and UX should not assume every project has only one person.
 
 ## Multi-Agent Support
 
