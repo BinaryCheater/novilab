@@ -90,12 +90,12 @@ Decision:
 
 Novi should define an agent kernel adapter boundary. A kernel can execute a run, stream events, request tools, wait for approval, and resume work. It must not own Novi records.
 
-Phase 1 starts with Simple Kernel or an equivalent deterministic local runner. DeepAgents + LangGraph remain the first serious later kernel candidate after the local core loop is inspectable.
+Phase 1 starts with Simple Kernel or an equivalent deterministic local runner and keeps that path for offline validation. A first optional DeepAgents adapter is now part of the Phase 1 prototype for API-backed runs, while advanced DeepAgents/LangGraph features remain incremental work.
 
 | Kernel | Good for | Not good for | Current view |
 |---|---|---|---|
 | Simple Kernel | Core loop, tests, no-framework validation | Complex reasoning or research | Keep it to avoid early framework lock-in |
-| DeepAgents + LangGraph | Research, analysis, experiment design, long-running workflows, subagents | Owning memory/artifacts/policy directly | First serious kernel candidate |
+| DeepAgents + LangGraph | Research, analysis, experiment design, long-running workflows, subagents | Owning memory/artifacts/policy directly | Optional Phase 1 prototype exists; deepen incrementally |
 | Pi Agent Core | Interactive local coding-like sessions, TS-side experiments | Default source of truth | Later spike |
 | Codex/Claude Code/OpenHands | External coding worker | Replacing Novi core runtime | Integrate as worker/module |
 
@@ -126,7 +126,28 @@ Boundaries:
 - LangGraph checkpoints are execution recovery state, not Novi RunLedger.
 - DeepAgents filesystem is working memory, not Novi ArtifactStore or long-term memory.
 - DeepAgents tools must wrap Novi Tool Runtime and must not receive high-risk native tools directly.
+- DeepAgents built-in filesystem and shell tools should be mapped deliberately to Novi tools before being enabled; direct high-risk built-ins are not the default.
+- Stable system, skill, and tool instructions should be separated from dynamic conversation turns to support cache-friendly provider requests.
+- `prompt.md` is a human-readable archive. `model_messages.jsonl` and related request records represent the structured provider/kernel boundary.
 - Novi still owns sessions, runs, tools, artifacts, memory, policy, and audit.
+
+## Model Provider Adapter
+
+Decision:
+
+Phase 1 supports project-local model configuration in `.novi/novi.yaml`, with environment variables as fallback.
+
+Initial provider modes:
+
+| Provider mode | API shape | Use case |
+|---|---|---|
+| `deterministic_local` | no network | Offline tests, inspectable records, no LLM dependency |
+| `openai_chat` | OpenAI-compatible `/v1/chat/completions` | SiliconFlow, DeepSeek-compatible gateways, and other compatible providers |
+| `openai_responses` | OpenAI Responses API | Reserved for providers that support Responses semantics |
+
+The current compatible-provider path uses chat-completions semantics. That is enough for basic messages and tool calling when the provider implements compatible tool-call fields, but it may not expose Responses-only capabilities such as richer reasoning items, native hosted tools, or provider-managed state.
+
+LiteLLM remains a useful future gateway for more providers and Anthropic-style APIs, but it is not required for the first SiliconFlow-compatible path.
 
 ## Research, Web Search, And Deep Research
 

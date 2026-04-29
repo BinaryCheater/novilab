@@ -39,7 +39,7 @@ Build check:
 - [x] `features.md` lists core/early/next/later features.
 - [x] `roadmap.md` works as a development checklist.
 - [x] `open-questions.md` collects unresolved decisions.
-- [ ] English and Chinese specs are roughly aligned.
+- [x] English and Chinese specs are roughly aligned.
 
 Acceptance check:
 
@@ -60,7 +60,7 @@ Novi is ready for a Phase 1 implementation plan, not broad implementation. The n
 
 ## Phase 1: Local Core Loop
 
-Goal: create, execute, record, and inspect one local run without depending on a complex external agent framework.
+Goal: create, execute, record, and inspect one local run, with deterministic local execution and an optional API-backed DeepAgents path.
 
 Entry check:
 
@@ -68,39 +68,46 @@ Entry check:
 - [x] Local-first is the starting point.
 - [x] CLI is the first control surface.
 - [x] Simple Kernel or an equivalent deterministic fallback is the Phase 1 runner path.
-- [ ] Phase 1 implementation plan exists under `docs/plans/`.
+- [x] Phase 1 implementation plan exists under `docs/plans/`.
 
 Build check:
 
-- [ ] Project init creates a local Novi workspace.
-- [ ] Skill registry discovers and lists `SKILL.md`.
-- [ ] Sessions can be created, opened, listed, and summarized.
-- [ ] Runs can be created, updated, completed, and failed.
-- [ ] Run ledger records append-only events.
-- [ ] Tool call log is separate from general events.
-- [ ] Artifact store registers local outputs.
-- [ ] Tool registry lists local tools.
-- [ ] Policy/approval can at least express require approval / blocked.
-- [ ] Context pack can be generated and saved.
-- [ ] CLI can inspect project/session/run/tool/artifact.
-- [ ] Simple Kernel can emit deterministic research/analysis/audit run events.
-- [ ] Memory candidates can be proposed, listed, accepted, and rejected.
-- [ ] Development checkpoints are recorded in git and, when useful, `docs/dev-log/`.
+- [x] Project init creates a local Novi workspace.
+- [x] Skill registry discovers and lists `SKILL.md`.
+- [x] Sessions can be created, opened, listed, and summarized.
+- [x] Runs can be created, updated, completed, and failed.
+- [x] Run ledger records append-only events.
+- [x] Tool call log is separate from general events.
+- [x] Model call log is separate from tool calls.
+- [x] Artifact store registers local outputs.
+- [x] Tool registry lists local tools.
+- [x] Policy/approval can at least express require approval / blocked.
+- [x] Context pack and prompt archives can be generated and saved.
+- [x] CLI can inspect project/session/run/tool/artifact.
+- [x] Simple Kernel can emit deterministic research/analysis/audit run events.
+- [x] Project-local model config can be written and inspected.
+- [x] OpenAI-compatible chat-completions providers can be configured for API-backed runs.
+- [x] `novi ask` records multi-turn user/assistant messages and creates runs.
+- [x] `novi run output` and `novi run trace` expose model output and execution trace.
+- [x] DeepAgents optional kernel can call compatible providers and route read-only tool calls through Novi Tool Runtime.
+- [x] Memory candidates can be proposed, listed, accepted, and rejected.
+- [x] Development checkpoints are recorded in git and, when useful, `docs/impl/`.
 
 Acceptance check:
 
-- [ ] User can run the minimum loop: init, skill list, session create, run start, run inspect.
-- [ ] A run's objective, status, events, tool calls, and artifacts can be viewed.
-- [ ] User can explain what happened, why, and where outputs live.
-- [ ] High-risk or unauthorized tools cannot bypass policy.
-- [ ] Core records can be validated without a real LLM.
+- [x] User can run the minimum loop: init, skill list, session create, run start, run inspect.
+- [x] User can configure a compatible model provider and run an API-backed smoke test.
+- [x] A run's objective, status, events, tool calls, model calls, and artifacts can be viewed.
+- [x] User can explain what happened, why, and where outputs live through CLI output/trace commands.
+- [x] High-risk or unauthorized tools cannot bypass policy.
+- [x] Core records can be validated without a real LLM.
 
 Defer:
 
 - [ ] No real robot integration.
 - [ ] No full memory system.
 - [ ] No TUI/Web.
-- [ ] DeepAgents/LangGraph integration not required yet.
+- [ ] DeepAgents advanced streaming, checkpoint/resume, subagent mapping, and built-in write/shell tool mapping are deferred.
 - [ ] No complex permission matrix.
 - [ ] No full cowork/project participant system.
 
@@ -123,8 +130,9 @@ Build check:
 - [ ] Research run can generate an evidence table.
 - [ ] Research run can generate a synthesis report.
 - [ ] Important report claims link to source artifacts.
-- [ ] DeepAgents/LangGraph kernel adapter can be integrated as the serious kernel candidate.
-- [ ] DeepAgents tools are wrapped through Novi Tool Runtime.
+- [x] DeepAgents/LangGraph kernel adapter exists as the first serious kernel candidate.
+- [x] Initial DeepAgents read-only tools are wrapped through Novi Tool Runtime.
+- [ ] DeepAgents advanced built-ins, streaming, checkpoints, and subagent mapping are integrated deliberately.
 - [ ] Browser automation entry criteria are clear even if not implemented.
 
 Acceptance check:

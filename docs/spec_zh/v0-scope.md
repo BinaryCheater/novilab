@@ -1,6 +1,6 @@
 # V0 范围规格
 
-状态：Draft
+状态：Draft，v0 方向已接受
 
 ## 目标
 
@@ -19,7 +19,7 @@ V0 应证明 Novi 的核心闭环，而不是一开始就引入重型基础设�
 
 ## 必须具备
 
-Proposal:
+Decision:
 
 - `novi init` 在当前项目中创建本地 `.novi/` 工作区。
 - 可以列出并加载 `skills/` 中的内置技能。
@@ -32,6 +32,10 @@ Proposal:
 - policies 至少能表达某个工具是否需要 approval。
 - runs 可以记录 agent participants 及其 roles，即使 v0 只使用 orchestrator 和 auditor roles。
 - CLI 能检查足够状态，用来解释发生了什么。
+- V0 面向单个本地 researcher/developer，在一个 project directory 中工作。
+- V0 从 deterministic mock/local runner 起步，不要求真实 LLM 依赖。
+- Project-local model configuration 可以选择连接 OpenAI-compatible chat-completions provider。
+- 多轮 `novi ask` 可以追加 session messages、创建 run，并归档 provider/kernel request records。
 
 ## 应该具备
 
@@ -41,6 +45,7 @@ Proposal:
 - 小型 tool registry。
 - run records 中包含 per-agent tool scope 和 context scope。
 - stub 或本地 model runner interface。
+- Novi-owned run/tool/audit 边界之后的可选 DeepAgents kernel adapter。
 - 对 specs 和 records 的基础 schema validation。
 - run summary 文件。
 - session rolling summary 文件。
@@ -48,7 +53,7 @@ Proposal:
 
 ## 初始内置技能
 
-Proposal:
+Decision:
 
 先从这些开始：
 
@@ -67,7 +72,7 @@ Proposal:
 
 ## 初始模块
 
-Proposal:
+Decision:
 
 先从这些开始：
 
@@ -78,6 +83,13 @@ Proposal:
 - `search_stub`.
 
 网络搜索、浏览器自动化、ROS、仿真、训练、IM、MCP 和 observability 模块应后置，除非它们是验证第一条闭环所必需的。
+
+默认 tool policy：
+
+- `read_only`：允许并记录。
+- `write_local`：只允许 workspace 内写入；写入应被记录，并在可行时注册为 artifacts 或 diffs。
+- `shell`：只作为 sandboxed execution 存在，默认需要 approval。
+- `network`、`external_side_effect`、`physical_world`：默认禁用或 approval-gated。
 
 ## V0 不做
 

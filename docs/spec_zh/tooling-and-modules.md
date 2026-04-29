@@ -86,14 +86,16 @@ TypeScript 仍有价值，但更适合后续这些方向：
 
 ## Agent Kernel 候选
 
-Proposal:
+Decision:
 
 Novi 应定义 agent kernel adapter boundary。Kernel 可以执行 run、stream events、请求工具、等待 approval、恢复执行，但不能拥有 Novi records。
+
+Phase 1 从 Simple Kernel 或等价 deterministic local runner 起步，并保留这条路径用于 offline validation。当前 Phase 1 prototype 已加入可选 DeepAgents adapter，用于 API-backed runs；更完整的 DeepAgents/LangGraph 能力继续增量推进。
 
 | Kernel | 适合用途 | 不适合做什么 | 当前判断 |
 |---|---|---|---|
 | Simple Kernel | core loop、测试、无外部依赖验证 | 复杂推理、多步研究 | 应保留，用于避免过早锁定框架 |
-| DeepAgents + LangGraph | research、analysis、experiment design、long-running workflows、subagents | 不能直接拥有 memory/artifacts/policy | 第一个 serious kernel 候选 |
+| DeepAgents + LangGraph | research、analysis、experiment design、long-running workflows、subagents | 不能直接拥有 memory/artifacts/policy | 已有可选 Phase 1 prototype；后续逐步加深 |
 | Pi Agent Core | interactive local coding-like sessions、TS-side experiments | 不宜作为默认 source of truth | 后续 spike |
 | Codex/Claude Code/OpenHands | 外部 coding worker | 不应替代 Novi core runtime | 作为 worker/module 接入 |
 
@@ -124,7 +126,28 @@ LangGraph 更像 stateful agent/workflow runtime。它可以帮助 Novi 获得�
 - LangGraph checkpoint 是 execution recovery state，不等于 Novi RunLedger。
 - DeepAgents filesystem 是 working memory，不等于 Novi ArtifactStore 或 long-term memory。
 - DeepAgents tools 必须包装 Novi Tool Runtime，不能直接拿高风险工具。
+- DeepAgents built-in filesystem 和 shell tools 应先明确映射到 Novi tools，再决定是否启用；默认不直接暴露高风险 built-ins。
+- Stable system、skill、tool instructions 应与动态 conversation turns 分离，以支持 provider request 的 cache-friendly 结构。
+- `prompt.md` 是人类可读 archive。`model_messages.jsonl` 和相关 request records 才代表结构化 provider/kernel 边界。
 - Novi 仍然拥有 sessions、runs、tools、artifacts、memory、policy 和 audit。
+
+## Model Provider Adapter
+
+Decision:
+
+Phase 1 支持把 model 配置保存到 `.novi/novi.yaml`，环境变量保留为 fallback。
+
+初始 provider modes：
+
+| Provider mode | API shape | 用途 |
+|---|---|---|
+| `deterministic_local` | no network | Offline tests、inspectable records、不依赖 LLM |
+| `openai_chat` | OpenAI-compatible `/v1/chat/completions` | SiliconFlow、DeepSeek-compatible gateways 和其他 compatible providers |
+| `openai_responses` | OpenAI Responses API | 预留给支持 Responses semantics 的 provider |
+
+当前 compatible-provider path 使用 chat-completions semantics。只要 provider 实现 compatible tool-call fields，它足够支持基础 messages 和 tool calling；但可能缺少 Responses-only 能力，例如更丰富的 reasoning items、native hosted tools 或 provider-managed state。
+
+LiteLLM 仍是后续有价值的 provider gateway，尤其适合更多供应商和 Anthropic-style APIs，但第一版 SiliconFlow-compatible path 不依赖它。
 
 ## Research、Web Search 与 Deep Research
 
@@ -159,6 +182,7 @@ research objective
 关键原则：
 
 - Deep research 是 run type 或 skill-driven workflow，不是外部黑盒。
+- Phase 1 可以通过 `search_stub` 模拟 research sources，让 record shape 和 inspection 先稳定，再决定 network/provider。
 - 可以接 hosted deep-research provider，但它必须作为 adapter，输出仍要转成 Novi artifacts 和 evidence records。
 - 每个重要 claim 应能追溯到 source artifact。
 - 浏览器、下载、登录、付费或高频抓取都应有 policy。
@@ -345,11 +369,8 @@ Deferred:
 
 Open:
 
-1. DeepAgents + LangGraph 是否作为第一个 serious kernel，Simple Kernel 是否作为基础验证路径？
-2. 第一版 research/deep-research 是否接受 hosted search provider，还是优先 self-hosted/stub？
-3. Browser automation 是否必须进入早期模块，还是先只做 static web fetch？
-4. Codex/Claude/OpenHands 应统一为 worker category，还是分别建 module/tool adapter？
-5. Cowork 应先支持多个人类 project participants，还是先支持 coding worker？
-6. CLI 是否作为第一个 control plane，TUI/Web/Channel 分别何时进入讨论？
-7. Memory 的最小工具边界是什么，哪些检索能力应等 memory spec 决定？
-8. Physical-AI 模块应优先讨论 simulation、training、dataset、ROS 还是 evaluation？
+1. Browser automation 应进入第一个真实 research module，还是 early research 先只使用 static web fetch？
+2. Codex/Claude/OpenHands 应表示为一个 worker category，还是分别建 module/tool adapters？
+3. Phase 3 应先做多个人类 project participants，还是先做 coding workers？
+4. V0 text search 之后，最小 memory retrieval boundary 是什么？
+5. Physical-AI 模块应优先讨论 simulation、training、dataset、ROS 还是 evaluation？

@@ -33,6 +33,32 @@ novi <noun> <verb> [args]
 
 显示当前 project、active session、active run、pending approvals 和 memory candidates。
 
+### `novi configure model <provider>`
+
+把 project-local model 配置写入 `.novi/novi.yaml`。
+
+第一批 provider：
+
+```text
+siliconflow
+openai-chat
+openai-responses
+```
+
+预期行为：
+
+- `siliconflow` 是 SiliconFlow OpenAI-compatible chat-completions API 的便利配置。
+- `openai-chat` 用于任何暴露 OpenAI-compatible `/v1/chat/completions` endpoint 的 provider。
+- `openai-responses` 预留给支持 OpenAI Responses API 的 provider。
+- Phase 1 原型可以把 API key 保存在 `.novi/novi.yaml`，但 CLI 不能把 secret 回显到终端。
+- 环境变量可以继续作为 fallback，但 project config 是 Phase 1 更可复现的默认路径。
+
+示例：
+
+```text
+novi configure model siliconflow --model "deepseek-ai/DeepSeek-V4-Flash" --api-key "..."
+```
+
 ## Skill Commands
 
 ### `novi skill list`
@@ -75,6 +101,21 @@ novi <noun> <verb> [args]
 显示 session summary、active skills、run ids、open questions、memory candidates 和 artifacts。
 当 session 有 active agent roles 时，也应显示它们。
 
+## Ask Command
+
+### `novi ask <message>`
+
+向 active session 追加一条 user message，创建 run，把 session 最近的 user/assistant turns 作为 chat messages 发送，记录 assistant response，并在终端打印 response。
+
+预期行为：
+
+- 默认使用 active session；
+- shared session options 可用后支持 `--session <id>`；
+- 支持 `--kernel simple|deepagents`；
+- 把 user/assistant turns 写入 session 的 `messages.jsonl`；
+- 写入 `system_prompt.md`、`model_messages.jsonl`、`prompt.md`、`response.md` 和 trace files；
+- `prompt.md` 是人类可读 archive，不一定等同于 provider request body。
+
 ## Run Commands
 
 ### `novi run start <type> <objective>`
@@ -94,8 +135,11 @@ analysis
 - `run.yaml`；
 - `events.jsonl`；
 - `tool_calls.jsonl`；
+- `model_calls.jsonl`；
 - `summary.md`；
 - `artifacts/`。
+
+V0 从 deterministic mock/local runner 起步；配置兼容模型 provider 后，可以通过 `--kernel deepagents` 使用 DeepAgents kernel。`research` run 无论是否连接真实 LLM，都应创建可检查 records。
 
 ### `novi run list`
 
@@ -116,6 +160,23 @@ analysis
 - memory candidates；
 - summary；
 - errors 或 blocked approvals。
+
+### `novi run output <run_id|latest>`
+
+打印 run 的主要 response 或 summary artifact。这是 CLI run 之后查看模型输出的最快入口。
+
+### `novi run trace <run_id|latest>`
+
+打印面向操作者的 run trace 摘要。
+
+应包含：
+
+- run id 和 status；
+- model provider、model profile、base URL 和 kernel；
+- `system_prompt.md`、`model_messages.jsonl`、`prompt.md`、`response.md` 等 request/archive 路径；
+- 如果存在 DeepAgents message 和 file archive，也应显示；
+- tool calls，并标明 `manual`、`runner_preflight` 或 `deepagents_model` 等 source attribution；
+- blocked/error 信息。
 
 ### `novi run cancel <run_id>`
 
@@ -148,6 +209,22 @@ analysis
 ### `novi tool inspect <tool_id>`
 
 显示 schema、module、risk、policies 和 approval requirements。
+
+原型说明：在命令面最终统一前，已实现命令可能叫 `novi tool show <tool_id>`。
+
+## Doctor Commands
+
+### `novi doctor model`
+
+检查 active model 配置，但不打印 secrets。
+
+应显示：
+
+- provider；
+- model；
+- base URL；
+- API key 是否已配置；
+- 该 provider 应使用 compatible chat-completions 还是 Responses API 路径。
 
 ## Approval Commands
 

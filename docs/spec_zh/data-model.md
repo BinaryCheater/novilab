@@ -21,7 +21,51 @@ evt_<timestamp>_<short>
 agent_<name_or_short>
 ```
 
-具体 timestamp 和 random suffix 格式仍待确认。
+使用 UTC compact sortable timestamp 加短随机后缀：
+
+```text
+YYYYMMDDTHHMMSSZ_<6-8 chars>
+```
+
+具体 random alphabet 可在实现时决定，但生成后的 ID 必须稳定。
+
+## ProjectConfig
+
+Decision:
+
+`.novi/novi.yaml` 保存本地 project 配置。
+
+必需字段：
+
+- `version`
+- `workspace`
+- `created_at`
+- `updated_at`
+
+可选字段：
+
+- `active_session_id`
+- `model`
+
+初始 model config 形态：
+
+```yaml
+model:
+  provider: openai_chat
+  model: deepseek-ai/DeepSeek-V4-Flash
+  base_url: https://api.siliconflow.cn/v1
+  api_key: local-secret
+```
+
+Provider values：
+
+```text
+openai_chat
+openai_responses
+deterministic_local
+```
+
+Secret rule：local prototype 可以把 `api_key` 保存在 `.novi/novi.yaml`，但 CLI 输出必须 redacted。是否迁移到 `.novi/secrets.yaml`、环境变量或 OS keychain，是后续 hardening 决策。
 
 ## SkillSpec
 
@@ -80,6 +124,27 @@ paused
 archived
 ```
 
+## MessageLogEntry
+
+Decision:
+
+Session message log 以 JSONL 存在 `messages.jsonl`。
+
+必需字段：
+
+- `id`
+- `session_id`
+- `role`
+- `content`
+- `created_at`
+
+可选字段：
+
+- `run_id`
+- `metadata`
+
+初始 provider request 会把最近的 `user` 和 `assistant` turns 作为 chat messages。Tool messages 先归档在 run trace files 中；是否进入长期 session history，是单独的 context policy 决策。
+
 ## RunSpec
 
 Proposal:
@@ -97,6 +162,9 @@ Proposal:
 可选字段：
 
 - `completed_at`
+- `owner`
+- `actor`
+- `kernel`
 - `skill_refs`
 - `module_refs`
 - `participants`
@@ -109,14 +177,19 @@ Run types：
 
 ```text
 research
+analysis
+audit
+```
+
+Reserved later run types：
+
+```text
 coding
 experiment
 simulation
 training
 robot
 evaluation
-analysis
-audit
 ```
 
 Run status values：
@@ -155,6 +228,11 @@ Initial agent roles：
 ```text
 orchestrator
 auditor
+```
+
+Reserved later roles：
+
+```text
 specialist
 worker
 observer
@@ -221,6 +299,9 @@ Proposal:
 - `tool_refs`
 - `permission_refs`
 - `messages_ref`
+- `system_prompt_ref`
+- `model_messages_ref`
+- `prompt_parts_ref`
 - `compiled_prompt_ref`
 
 Context packs 应在 run 结束后仍可检查。
@@ -278,9 +359,21 @@ Proposal:
 - `error`
 - `latency_ms`
 - `risk`
+- `source`
+- `executor`
 - `policy_result`
+- `block_reason`
 - `approval_id`
 - `artifact_ids`
+
+Tool call source values：
+
+```text
+manual
+runner_preflight
+deepagents_model
+system
+```
 
 Tool call status values：
 
@@ -294,6 +387,35 @@ success
 error
 cancelled
 ```
+
+## ModelCallRecord
+
+Decision:
+
+Model calls 与 tool calls 分开，写入 `model_calls.jsonl`。
+
+必需字段：
+
+- `run_id`
+- `agent_id`
+- `kernel`
+- `status`
+- `prompt_path`
+- `response_path`
+
+可选字段：
+
+- `model_provider`
+- `model_profile`
+- `model_base_url`
+- `started_at`
+- `completed_at`
+- `model_messages_path`
+- `system_prompt_path`
+- `exported_files`
+- `error`
+
+`prompt_path` 指向人类可读 archive。存在 `model_messages_path` 时，它指向真正传到 provider/kernel 边界的 chat-message sequence。
 
 ## ArtifactRecord
 
@@ -311,10 +433,13 @@ Proposal:
 
 - `produced_by`
 - `hash`
+- `hash_algorithm`
 - `metadata`
 - `source_urls`
 - `mime_type`
 - `size_bytes`
+
+Hash rule：Novi 写入或复制的 artifacts 应包含 content hash。引用但尚未 fetch/capture 的外部 artifact 可以暂时没有 hash。
 
 ## MemoryCandidate
 
@@ -332,6 +457,7 @@ Proposal:
 可选字段：
 
 - `evidence`
+- `supersedes`
 - `confidence`
 - `scope`
 - `proposed_by`
@@ -357,6 +483,8 @@ episodic
 procedural
 ```
 
+V0 rule：memory candidates 由本地用户通过 CLI accept/reject。Auditor output 可以提出 recommendations，但不能直接 commit long-term memory。
+
 ## EventRecord
 
 Proposal:
@@ -372,6 +500,7 @@ Proposal:
 
 - `session_id`
 - `actor`
+- `agent_id`
 - `summary`
 - `payload_ref`
 - `payload`
@@ -395,6 +524,62 @@ RunFailed
 RunSummarized
 ```
 
+`actor` 可以表示 local user、agent 或 system process。V0 不需要完整多人 identity，但每个 decision 和 tool action 都应可归因。
+
+## ProjectParticipant
+
+Deferred:
+
+完整 project participant record 延后到 collaboration/cowork phase。V0 不假设 team collaboration，但 `actor`、`owner`、`reviewed_by` 和 event attribution 等字段应兼容未来 human identities。
+
+后续预期字段：
+
+- `id`
+- `display_name`
+- `role`
+- `status`
+- `permissions`
+- `created_at`
+- `updated_at`
+
+## ApprovalRecord
+
+Proposal:
+
+V0 需要 policy-gated tool calls 的 approval state，但可以从一个由 `ToolCallRecord.approval_id` 引用的简单 record 开始。
+
+必需字段：
+
+- `id`
+- `run_id`
+- `tool_call_id`
+- `status`
+- `risk`
+- `requested_by`
+- `created_at`
+- `updated_at`
+
+可选字段：
+
+- `resolved_by`
+- `resolved_at`
+- `decision_note`
+
+Approval status values：
+
+```text
+pending
+approved
+rejected
+expired
+```
+
+## CoworkAssignment
+
+Deferred:
+
+Cowork assignments 延后到 Phase 3。除了 comments 或 open questions 中的 future-compatible references，不应进入 Phase 1 implementation plan。
+
 ## 建议项目目录
 
 Proposal:
@@ -416,6 +601,15 @@ project-root/
         run.yaml
         events.jsonl
         tool_calls.jsonl
+        model_calls.jsonl
+        system_prompt.md
+        model_messages.jsonl
+        model_request.yaml
+        prompt.md
+        prompt_parts/
+        deepagents_messages.jsonl
+        deepagents_files/
+        response.md
         artifacts/
         summary.md
     memory/
@@ -424,6 +618,7 @@ project-root/
       episodic.jsonl
       candidates/
     artifacts/
+    approvals/
 ```
 
-Open decision：session directories 是否应嵌套 runs，还是所有 runs 都放在 `.novi/runs/` 并由 sessions 引用。当前建议是 runs 独立存储，sessions 引用 run ids。
+Runs 独立存储在 `.novi/runs/`，sessions 通过 `run_ids` 引用它们。这让 run 作为独立 audit unit 保持清晰。

@@ -31,10 +31,14 @@ V0 should validate the core loop:
 
 ```text
 novi init
+novi configure model siliconflow --model "..."
 novi skill list
 novi session create
+novi ask "..."
 novi run start research "..."
 novi run inspect <run_id>
+novi run output latest
+novi run trace latest
 novi memory review
 ```
 
@@ -58,6 +62,8 @@ When reviewing, focus on:
 
 ## Current Status
 
-The core v0 direction is accepted enough to plan Phase 1. No implementation has been started.
+The core v0 direction is accepted and Phase 1 implementation is underway.
+
+The current prototype can create a local `.novi/` workspace, list skills, create and open sessions, create runs, archive prompt/context records, store project-local model configuration, execute through the deterministic local kernel or optional DeepAgents kernel, call OpenAI-compatible chat-completions providers, and inspect run output/traces. `novi ask` records multi-turn user/assistant messages and creates auditable runs. Read-only model-triggered tool calls can pass through Novi Tool Runtime and are logged with source attribution.
 
 The spec set is frozen. Do not edit files in this folder unless the user explicitly approves a spec change. Development process and implementation notes belong under `../impl/`.

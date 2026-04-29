@@ -14,7 +14,7 @@ Decision:
 
 1. The first user is a single local researcher/developer working inside one project directory.
 2. The first useful workflow is `research.review`: create an auditable research run, capture records/artifacts, and propose reviewable memory.
-3. V0 starts with a deterministic mock/local runner and stable records. A real LLM can be added after the local core loop is inspectable.
+3. V0 starts with a deterministic mock/local runner and stable records. A real LLM is optional once the local core loop is inspectable and project-local provider configuration exists.
 
 ## Storage
 
@@ -58,6 +58,35 @@ Decision:
 2. V0 agent definitions are project-local defaults with per-run participant snapshots.
 3. V0 records per-agent tool visibility and execution permission snapshots, even if enforcement is simple.
 4. Multiple model profiles in one run are deferred. V0 records a single model profile per run/participant, usually the mock/local runner profile.
+
+## Model Providers And Context
+
+Decision:
+
+1. Phase 1 supports project-local model configuration in `.novi/novi.yaml`, with environment variables as fallback.
+2. OpenAI-compatible chat completions are enough for the first SiliconFlow-compatible path.
+3. The model request boundary separates stable `system_prompt.md`, structured `model_messages.jsonl`, human-readable `prompt.md`, and trace records.
+4. Recent user/assistant turns are sent as chat messages for multi-round conversation. This follows stateless chat-completions requirements and gives providers a stable prefix for cache-friendly requests where supported.
+
+Open:
+
+1. Should API keys remain in `.novi/novi.yaml`, move to `.novi/secrets.yaml`, use environment variables only, or use OS keychain?
+2. Should LiteLLM become the default provider gateway once Anthropic-style APIs or broader provider normalization are required?
+3. Which provider-specific cache-control hints, if any, should Novi expose instead of relying only on stable message ordering?
+
+## DeepAgents Boundary
+
+Decision:
+
+1. DeepAgents is an optional execution kernel, not the source of truth for sessions, runs, tools, memory, artifacts, or policies.
+2. DeepAgents tool calls should enter Novi Tool Runtime and be logged with source attribution.
+3. DeepAgents working files are execution working memory unless Novi explicitly exports them as artifacts.
+
+Open:
+
+1. Which DeepAgents built-in tools should be enabled directly, wrapped, or replaced by Novi tools?
+2. How should DeepAgents subagents map to Novi platform agents or run participants?
+3. Which LangGraph checkpoint/resume features should be surfaced in Novi run records?
 
 ## Memory
 

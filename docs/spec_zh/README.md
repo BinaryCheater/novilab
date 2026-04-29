@@ -31,10 +31,14 @@ V0 应验证核心闭环：
 
 ```text
 novi init
+novi configure model siliconflow --model "..."
 novi skill list
 novi session create
+novi ask "..."
 novi run start research "..."
 novi run inspect <run_id>
+novi run output latest
+novi run trace latest
 novi memory review
 ```
 
@@ -58,4 +62,8 @@ novi memory review
 
 ## 当前状态
 
-所有规格均为草案。尚未开始实现。
+核心 v0 方向已经接受，Phase 1 实现正在推进中。
+
+当前原型已经可以创建本地 `.novi/` 工作区、列出 skills、创建和打开 sessions、创建 runs、归档 prompt/context 记录、保存 project-local model 配置、通过 deterministic local kernel 或可选 DeepAgents kernel 执行、调用 OpenAI-compatible chat-completions provider，并检查 run output/trace。`novi ask` 会记录多轮 user/assistant messages，并创建可审计 runs。由模型触发的 read-only tool call 可以经过 Novi Tool Runtime，并带 source attribution 写入日志。
+
+本 spec 集已冻结。除非用户明确批准 spec 变更，否则不要编辑本目录文件。开发过程和实现记录应放在 `../impl/`。
