@@ -39,9 +39,11 @@ Core concepts are skills, sessions, runs, tools, memory, artifacts, policies, an
 - Keep new specs under `docs/spec/` until project scope is confirmed.
 - Avoid implementation scaffolding until the specs are accepted or explicitly requested.
 - Use Superpowers skills for development work when available, especially planning, test-driven development, debugging, and verification-before-completion workflows.
+- Use `uv` to manage the Python environment and dependencies. Prefer commands such as `uv sync --extra dev` and `uv run pytest -v`.
 
 ## GitHub Workflow
 
 - Do not push directly to the remote `main` branch.
 - All GitHub changes intended for `main` must go through a pull request and be merged through GitHub.
 - Use development branches such as `dev` or `codex/<topic>` for pushed work.
+- Prefer creating a separate branch for each focused development task so review and rollback stay clear.
