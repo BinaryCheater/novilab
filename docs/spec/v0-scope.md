@@ -1,6 +1,6 @@
 # V0 Scope Spec
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 ## Goal
 
@@ -19,7 +19,7 @@ inspect and review results
 
 ## Must Have
 
-Proposal:
+Decision:
 
 - `novi init` creates a local `.novi/` workspace.
 - Built-in skills can be listed and loaded from `skills/`.
@@ -32,6 +32,8 @@ Proposal:
 - Policies can express at least whether a tool requires approval.
 - Runs can record agent participants and their roles, even if v0 only uses orchestrator and auditor roles.
 - The CLI can inspect enough state to explain what happened.
+- V0 is for a single local researcher/developer in one project directory.
+- V0 starts with a deterministic mock/local runner rather than a real LLM dependency.
 
 ## Should Have
 
@@ -48,7 +50,7 @@ Proposal:
 
 ## Initial Built-In Skills
 
-Proposal:
+Decision:
 
 Start with:
 
@@ -67,7 +69,7 @@ Optional after the core loop works:
 
 ## Initial Modules
 
-Proposal:
+Decision:
 
 Start with:
 
@@ -78,6 +80,13 @@ Start with:
 - `search_stub`.
 
 Network search, browser automation, ROS, simulation, training, IM, MCP, and observability modules should come later unless needed to validate the first loop.
+
+Default tool policy:
+
+- `read_only`: allowed and recorded.
+- `write_local`: allowed only inside the workspace; writes must be logged and registered as artifacts or diffs when practical.
+- `shell`: available only as sandboxed execution with approval required by default.
+- `network`, `external_side_effect`, and `physical_world`: disabled or approval-gated by default.
 
 ## Out of Scope for V0
 

@@ -10,62 +10,62 @@ Suggested review flow:
 
 ## Product Scope
 
-Open:
+Decision:
 
-1. Who is the first user: a single local researcher/developer, a lab team, or external users?
-2. What is the first useful workflow: research review, code maintenance, experiment design, or physical-AI run audit?
-3. Should v0 connect to a real LLM immediately, or start with a mock/local runner and stable records?
+1. The first user is a single local researcher/developer working inside one project directory.
+2. The first useful workflow is `research.review`: create an auditable research run, capture records/artifacts, and propose reviewable memory.
+3. V0 starts with a deterministic mock/local runner and stable records. A real LLM can be added after the local core loop is inspectable.
 
 ## Storage
 
-Open:
+Decision:
 
-1. Should SQLite be included in v0, or should v0 start with filesystem-only records?
-2. Should all durable records be valid YAML/JSON from day one?
-3. Should artifacts always get content hashes in v0?
-4. Should sessions contain runs, or should runs be stored independently and referenced by sessions?
+1. V0 starts filesystem-only. SQLite is deferred until query/index needs are proven.
+2. Durable structured records must be valid YAML or JSONL from day one.
+3. Artifacts should get content hashes when Novi writes or copies the file. Referenced external artifacts may omit hashes until fetched or captured.
+4. Runs are stored independently under `.novi/runs/<run_id>/` and referenced from sessions by `run_ids`.
 
 ## CLI Behavior
 
-Open:
+Decision:
 
-1. Should command style be `novi run start` or shorter forms like `novi run`?
-2. Should `novi chat` be in the first milestone, or come after runs and sessions are stable?
-3. Should commands require an active session, or allow `--session <id>` everywhere?
+1. V0 uses explicit noun/verb commands such as `novi run start`.
+2. `novi chat` is deferred until runs and sessions are stable.
+3. Commands use the active session by default. Commands that operate on session-scoped state should also accept `--session <id>` once the CLI parser supports shared options.
 
 ## Skills
 
-Open:
+Decision:
 
-1. What is the minimum accepted `SKILL.md` shape?
-2. Should Novi copy built-in skills into `.novi/skills/`, or read them from the installed package?
-3. Should project-local skills override built-in skills with the same id?
+1. The minimum accepted `SKILL.md` shape is a readable Markdown file with optional YAML frontmatter. If frontmatter is absent, Novi derives `id` from path/name and `description` from the first paragraph when possible.
+2. Built-in skills are read from the installed package by default. `novi init` may create `.novi/skills/` for project-local skills but should not copy built-ins unless explicitly requested later.
+3. Project-local skills override built-in skills with the same id, and `novi skill list` should make the override visible.
 
 ## Tools And Policy
 
-Open:
+Decision:
 
-1. Which risk levels require approval by default?
-2. Should shell execution exist in v0, even if sandboxed?
-3. Should network access be disabled by default for v0 tools?
-4. What should be recorded for failed or blocked tool calls?
+1. `read_only` is allowed by default and recorded. `write_local` is allowed only inside the workspace and must produce an event and artifact/diff reference when it writes. `shell`, `network`, `external_side_effect`, and `physical_world` require approval or are disabled by default in v0.
+2. Shell execution can exist in v0 only as a sandboxed tool with approval required by default.
+3. Network access is disabled by default for v0 tools. `search_stub` can simulate research outputs without real network access.
+4. Failed or blocked tool calls record the requested tool id, args reference, actor/agent, risk, policy result, status, error/block reason, timestamps, and any partial artifact refs.
 
 ## Agents
 
-Open:
+Decision:
 
-1. What default agent roles should exist beyond `orchestrator` and `auditor`?
-2. Should agent definitions live globally, per project, per session, or all three?
-3. Should tool visibility and tool execution permission be configured per agent from v0?
-4. Should one run support multiple model profiles at v0, or should that be a later capability?
+1. V0 ships only conceptual `orchestrator` and `auditor` roles. Other roles remain reserved names, not active defaults.
+2. V0 agent definitions are project-local defaults with per-run participant snapshots.
+3. V0 records per-agent tool visibility and execution permission snapshots, even if enforcement is simple.
+4. Multiple model profiles in one run are deferred. V0 records a single model profile per run/participant, usually the mock/local runner profile.
 
 ## Memory
 
-Open:
+Decision:
 
-1. Who can accept memory candidates: user only, auditor only, or policy-driven auto-accept for low-risk summaries?
-2. Should memory candidates require artifact references?
-3. How should stale or superseded memory be represented?
+1. V0 memory candidates are accepted or rejected by the local user through CLI. The auditor may recommend, but not commit memory.
+2. Memory candidates should include evidence artifact refs when the claim depends on run output or external content. Pure procedural/project notes may point to the run summary as evidence.
+3. Stale memory is represented by a new candidate that supersedes an accepted entry; the old entry remains readable with a superseded reference.
 
 ## Later Integrations
 

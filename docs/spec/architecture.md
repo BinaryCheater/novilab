@@ -1,6 +1,6 @@
 # Architecture Spec
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 ## Positioning
 
@@ -125,7 +125,7 @@ Novi should support multiple human participants in one project. This introduces 
 - conflict handling: concurrent edits to summaries, memory, specs, or assignments must be traceable;
 - audit attribution: important decisions must trace back to a person or agent.
 
-V0 does not need a full team system, but data and UX should not assume every project has only one person.
+V0 does not need a full team system. V0 should start with a single local user but keep event `actor`, ownership, review, and approval fields compatible with future project participants.
 
 ## Multi-Agent Support
 
@@ -159,7 +159,7 @@ V0 does not need a complex agent graph or free-form agent-to-agent chat. It shou
 
 ## V0 Agents
 
-Proposal:
+Decision:
 
 V0 should assume two initial agent roles conceptually:
 
@@ -189,13 +189,13 @@ Raw old messages, large logs, and unverified memory should be excluded by defaul
 
 ## Storage Direction
 
-Proposal:
+Decision:
 
 V0 should be local-first:
 
 - filesystem for sessions, runs, skills, artifacts, and summaries;
 - JSONL for append-only events and tool calls;
 - Markdown for editable summaries and project memory;
-- SQLite optionally for indexes and queryable metadata.
+- SQLite deferred until query/index needs are proven.
 
 SQLite is useful, but the filesystem records should remain understandable without a database.

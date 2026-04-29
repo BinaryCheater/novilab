@@ -1,6 +1,6 @@
 # Tooling And Modules Spec
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 This spec is a technical tooling discussion document. It organizes candidate modules, external projects, integration boundaries, and implementation approaches. It is not a final decision, detailed file layout, data model, or milestone schedule.
 
@@ -86,9 +86,11 @@ This is a priority, not a permanent constraint. The important point is that Novi
 
 ## Agent Kernel Candidates
 
-Proposal:
+Decision:
 
 Novi should define an agent kernel adapter boundary. A kernel can execute a run, stream events, request tools, wait for approval, and resume work. It must not own Novi records.
+
+Phase 1 starts with Simple Kernel or an equivalent deterministic local runner. DeepAgents + LangGraph remain the first serious later kernel candidate after the local core loop is inspectable.
 
 | Kernel | Good for | Not good for | Current view |
 |---|---|---|---|
@@ -134,7 +136,7 @@ Novi should compose research capabilities from modules rather than depend on one
 
 | Capability | Responsibility | Candidate external projects | Output |
 |---|---|---|---|
-| `search.query` | Keyword search and candidate sources | Tavily, Brave Search API, SearXNG, SerpAPI | Search result artifact |
+| `search.query` | Keyword search and candidate sources | `search_stub` first; Tavily, Brave Search API, SearXNG, SerpAPI later | Search result artifact |
 | `web.fetch` | Static page fetch, HTML/text capture | httpx, requests, trafilatura, markdownify | Fetched page artifact |
 | `browser.open/read` | Dynamic pages, JS-rendered pages, logged-in pages | Playwright, browser-use, Browser MCP | Screenshot/HTML/text artifacts |
 | `pdf.parse` | PDF and paper parsing | PyMuPDF, pypdf, unstructured | Document text artifact |
@@ -159,6 +161,7 @@ research objective
 Principles:
 
 - Deep research is a run type or skill-driven workflow, not an external black box.
+- Phase 1 may simulate research sources through `search_stub` so record shape and inspection work before network/provider choices.
 - A hosted deep-research provider can be integrated, but only as an adapter whose output becomes Novi artifacts and evidence records.
 - Important claims should trace back to source artifacts.
 - Browser, download, login, paid access, and high-frequency crawling need policy.
@@ -206,7 +209,7 @@ Recommendations:
 
 ## Tool Runtime And Policy
 
-Proposal:
+Decision:
 
 All external tool calls should pass through Novi Tool Runtime. Whether a tool comes from DeepAgents, MCP, browser, shell, Codex worker, or channel command, it should enter the same policy/audit path.
 
@@ -214,10 +217,10 @@ All external tool calls should pass through Novi Tool Runtime. Whether a tool co
 |---|---|---|
 | read-only | Read project files, inspect git diff | Record event |
 | write-local | Write draft, create artifact | Restrict workspace, record diff/artifact |
-| network | Search, fetch, API call | Record URL/provider, rate-limit when needed |
+| network | Search, fetch, API call | Disabled or approval-gated in v0; record URL/provider when enabled |
 | shell | Shell command, Python execution | Sandbox, timeout, approval |
-| external side effect | Send message, create issue, submit job | Approval |
-| physical world | ROS action, robot control, real device | Preflight, approval, strong audit |
+| external side effect | Send message, create issue, submit job | Disabled or approval-gated |
+| physical world | ROS action, robot control, real device | Deferred; later requires preflight, approval, strong audit |
 
 ## MCP Position
 
@@ -345,11 +348,8 @@ These are real needs, but they should be specified separately.
 
 Open:
 
-1. Should DeepAgents + LangGraph be the first serious kernel, with Simple Kernel as the validation path?
-2. Should the first research/deep-research workflow accept hosted search providers, or prefer self-hosted/stub search?
-3. Should browser automation be an early module, or should early research use only static web fetch?
-4. Should Codex/Claude/OpenHands be represented as one worker category or separate module/tool adapters?
-5. Should cowork first support multiple human project participants, or coding workers?
-6. Should CLI be the first control plane, and when should TUI/Web/Channels enter discussion?
-7. What is the minimal memory tooling boundary, and which retrieval choices should wait for the memory spec?
-8. Which Physical-AI module should be discussed first: simulation, training, dataset, ROS, or evaluation?
+1. Should browser automation enter the first real research module, or should early research use only static web fetch?
+2. Should Codex/Claude/OpenHands be represented as one worker category or separate module/tool adapters?
+3. Which should come first in Phase 3: multiple human project participants or coding workers?
+4. What is the minimal memory retrieval boundary after v0 text search?
+5. Which Physical-AI module should be discussed first: simulation, training, dataset, ROS, or evaluation?

@@ -1,12 +1,12 @@
 # Data Model Spec
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 This spec defines the minimal durable objects for v0. Field names are draft and should stay easy to map to JSON, YAML, Markdown, and SQLite indexes.
 
 ## IDs
 
-Proposal:
+Decision:
 
 Use stable prefixed IDs:
 
@@ -21,11 +21,17 @@ evt_<timestamp>_<short>
 agent_<name_or_short>
 ```
 
-Exact timestamp and random suffix format is still open.
+Use UTC timestamps in compact sortable form plus a short random suffix:
+
+```text
+YYYYMMDDTHHMMSSZ_<6-8 chars>
+```
+
+The exact random alphabet can be chosen during implementation, but generated IDs must be stable once written.
 
 ## SkillSpec
 
-Proposal:
+Decision:
 
 Required:
 
@@ -48,7 +54,7 @@ Compatibility rule: a plain `SKILL.md` with common frontmatter should load even 
 
 ## SessionSpec
 
-Proposal:
+Decision:
 
 Required:
 
@@ -82,7 +88,7 @@ archived
 
 ## RunSpec
 
-Proposal:
+Decision:
 
 Required:
 
@@ -97,6 +103,8 @@ Required:
 Optional:
 
 - `completed_at`
+- `owner`
+- `actor`
 - `skill_refs`
 - `module_refs`
 - `participants`
@@ -109,14 +117,19 @@ Run types:
 
 ```text
 research
+analysis
+audit
+```
+
+Reserved later run types:
+
+```text
 coding
 experiment
 simulation
 training
 robot
 evaluation
-analysis
-audit
 ```
 
 Run status values:
@@ -133,7 +146,7 @@ cancelled
 
 ## AgentSpec
 
-Proposal:
+Decision:
 
 Required:
 
@@ -155,6 +168,11 @@ Initial agent roles:
 ```text
 orchestrator
 auditor
+```
+
+Reserved later roles:
+
+```text
 specialist
 worker
 observer
@@ -165,7 +183,7 @@ Role rule: do not create an agent only to simulate conversation. Create or activ
 
 ## RunParticipant
 
-Proposal:
+Decision:
 
 Required:
 
@@ -199,7 +217,7 @@ cancelled
 
 ## ContextPack
 
-Proposal:
+Decision:
 
 Required:
 
@@ -227,7 +245,7 @@ Context packs should be inspectable after the run.
 
 ## ToolSpec
 
-Proposal:
+Decision:
 
 Required:
 
@@ -259,7 +277,7 @@ physical_world
 
 ## ToolCallRecord
 
-Proposal:
+Decision:
 
 Required:
 
@@ -297,7 +315,7 @@ cancelled
 
 ## ArtifactRecord
 
-Proposal:
+Decision:
 
 Required:
 
@@ -311,14 +329,17 @@ Optional:
 
 - `produced_by`
 - `hash`
+- `hash_algorithm`
 - `metadata`
 - `source_urls`
 - `mime_type`
 - `size_bytes`
 
+Hash rule: artifacts written or copied by Novi should include a content hash. Referenced external artifacts may omit hashes until fetched or captured.
+
 ## MemoryCandidate
 
-Proposal:
+Decision:
 
 Required:
 
@@ -332,6 +353,7 @@ Required:
 Optional:
 
 - `evidence`
+- `supersedes`
 - `confidence`
 - `scope`
 - `proposed_by`
@@ -357,9 +379,11 @@ episodic
 procedural
 ```
 
+V0 rule: memory candidates are accepted or rejected by the local user through CLI. Auditor output may produce recommendations, but it must not directly commit long-term memory.
+
 ## EventRecord
 
-Proposal:
+Decision:
 
 Required:
 
@@ -372,6 +396,7 @@ Optional:
 
 - `session_id`
 - `actor`
+- `agent_id`
 - `summary`
 - `payload_ref`
 - `payload`
@@ -395,9 +420,65 @@ RunFailed
 RunSummarized
 ```
 
-## Suggested Project Layout
+`actor` can represent a local user, agent, or system process. V0 does not need full multi-human identity, but every decision and tool action should still be attributable.
+
+## ProjectParticipant
+
+Deferred:
+
+Full project participant records are deferred until the collaboration/cowork phase. V0 should not assume team collaboration, but fields such as `actor`, `owner`, `reviewed_by`, and event attribution should remain compatible with future human identities.
+
+Expected later fields:
+
+- `id`
+- `display_name`
+- `role`
+- `status`
+- `permissions`
+- `created_at`
+- `updated_at`
+
+## ApprovalRecord
 
 Proposal:
+
+V0 needs approval state for policy-gated tool calls, but it can start as a simple record referenced by `ToolCallRecord.approval_id`.
+
+Required:
+
+- `id`
+- `run_id`
+- `tool_call_id`
+- `status`
+- `risk`
+- `requested_by`
+- `created_at`
+- `updated_at`
+
+Optional:
+
+- `resolved_by`
+- `resolved_at`
+- `decision_note`
+
+Approval status values:
+
+```text
+pending
+approved
+rejected
+expired
+```
+
+## CoworkAssignment
+
+Deferred:
+
+Cowork assignments are deferred until Phase 3. They should not be part of the Phase 1 implementation plan except as future-compatible references in comments or open questions.
+
+## Suggested Project Layout
+
+Decision:
 
 ```text
 project-root/
@@ -424,6 +505,7 @@ project-root/
       episodic.jsonl
       candidates/
     artifacts/
+    approvals/
 ```
 
-Open decision: whether session directories should contain nested runs, or whether all runs should live under `.novi/runs/` and be referenced by sessions. The current recommendation is independent runs referenced by sessions.
+Runs live independently under `.novi/runs/` and are referenced by sessions through `run_ids`. This keeps runs as independent audit units.

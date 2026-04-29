@@ -15,7 +15,8 @@ Read in this order:
 5. `roadmap.md`: outlines directional roadmap phases.
 6. `data-model.md`: defines durable objects and records.
 7. `cli.md`: defines the first user-facing command surface.
-8. `open-questions.md`: lists decisions that still need confirmation.
+8. `development-process.md`: defines how development progress is recorded.
+9. `open-questions.md`: lists decisions that still need confirmation.
 
 ## Source Background
 
@@ -58,4 +59,4 @@ When reviewing, focus on:
 
 ## Current Status
 
-All specs are drafts. No implementation has been started.
+The core v0 direction is accepted enough to plan Phase 1. No implementation has been started.

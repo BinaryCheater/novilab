@@ -1,6 +1,6 @@
 # Roadmap Draft
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 This roadmap is a development-check draft, not a delivery commitment. It shows how Novi can grow from a local core loop into research, multi-human project collaboration, cowork, memory, UI, MCP, and physical-AI modules.
 
@@ -28,33 +28,35 @@ Goal: make product boundaries, feature surface, and technical candidates clear e
 
 Entry check:
 
-- [ ] Bootstrap and technical tooling background docs have been read.
-- [ ] Novi is confirmed not to be robot-first, multi-agent-first, or a Codex replacement.
-- [ ] Novi core is confirmed to own sessions, runs, tools, artifacts, memory flow, policy, and audit.
+- [x] Bootstrap and technical tooling background docs have been read.
+- [x] Novi is confirmed not to be robot-first, multi-agent-first, or a Codex replacement.
+- [x] Novi core is confirmed to own sessions, runs, tools, artifacts, memory flow, policy, and audit.
 
 Build check:
 
-- [ ] `architecture.md` describes core concepts and boundaries.
-- [ ] `tooling-and-modules.md` describes candidate modules, external projects, and integration boundaries.
-- [ ] `features.md` lists core/early/next/later features.
-- [ ] `roadmap.md` works as a development checklist.
-- [ ] `open-questions.md` collects unresolved decisions.
+- [x] `architecture.md` describes core concepts and boundaries.
+- [x] `tooling-and-modules.md` describes candidate modules, external projects, and integration boundaries.
+- [x] `features.md` lists core/early/next/later features.
+- [x] `roadmap.md` works as a development checklist.
+- [x] `open-questions.md` collects unresolved decisions.
 - [ ] English and Chinese specs are roughly aligned.
 
 Acceptance check:
 
-- [ ] Novi's one-sentence positioning can be explained.
-- [ ] The v0 reasons for not depending on ROS/MCP/Web dashboard/complex multi-agent graph can be explained.
-- [ ] Codex/Claude/OpenHands can be explained as workers, not Novi source of truth.
-- [ ] Multiple human project participants and agent participants can be distinguished.
+- [x] Novi's one-sentence positioning can be explained.
+- [x] The v0 reasons for not depending on ROS/MCP/Web dashboard/complex multi-agent graph can be explained.
+- [x] Codex/Claude/OpenHands can be explained as workers, not Novi source of truth.
+- [x] Multiple human project participants and agent participants can be distinguished.
 
-Defer:
+Deferred from Phase 0:
 
-- [ ] No concrete file layout.
-- [ ] No detailed data models.
-- [ ] No memory internals.
-- [ ] No full CLI command set.
-- [ ] No delivery dates.
+- [x] No delivery dates.
+- [x] Full memory internals.
+- [x] Full cowork/team model.
+
+Phase 0 result:
+
+Novi is ready for a Phase 1 implementation plan, not broad implementation. The next document should be `docs/plans/phase-1-local-core-loop.md`.
 
 ## Phase 1: Local Core Loop
 
@@ -62,10 +64,11 @@ Goal: create, execute, record, and inspect one local run without depending on a 
 
 Entry check:
 
-- [ ] Phase 0 boundaries are acceptable.
-- [ ] Local-first is the starting point.
-- [ ] CLI is the first control surface.
-- [ ] Simple Kernel or an equivalent fallback exists.
+- [x] Phase 0 boundaries are acceptable.
+- [x] Local-first is the starting point.
+- [x] CLI is the first control surface.
+- [x] Simple Kernel or an equivalent deterministic fallback is the Phase 1 runner path.
+- [ ] Phase 1 implementation plan exists under `docs/plans/`.
 
 Build check:
 
@@ -80,7 +83,9 @@ Build check:
 - [ ] Policy/approval can at least express require approval / blocked.
 - [ ] Context pack can be generated and saved.
 - [ ] CLI can inspect project/session/run/tool/artifact.
-- [ ] Simple Kernel can emit deterministic run events.
+- [ ] Simple Kernel can emit deterministic research/analysis/audit run events.
+- [ ] Memory candidates can be proposed, listed, accepted, and rejected.
+- [ ] Development checkpoints are recorded in git and, when useful, `docs/dev-log/`.
 
 Acceptance check:
 
@@ -97,6 +102,7 @@ Defer:
 - [ ] No TUI/Web.
 - [ ] DeepAgents/LangGraph integration not required yet.
 - [ ] No complex permission matrix.
+- [ ] No full cowork/project participant system.
 
 ## Phase 2: Research And Deep Research
 

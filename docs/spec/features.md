@@ -1,6 +1,6 @@
 # Feature Table
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 This table summarizes Novi's feature surface. It does not define final priority or implementation order.
 
@@ -15,7 +15,7 @@ This table summarizes Novi's feature surface. It does not define final priority 
 
 | Feature | Priority | User value | Novi responsibility | Dependencies / external projects | Notes |
 |---|---|---|---|---|---|
-| Project init | Core | Create a Novi workspace for a project | Initialize `.novi`, config, directories, indexes | filesystem, CLI | Exact layout TBD |
+| Project init | Core | Create a Novi workspace for a project | Initialize `.novi`, config, directories, indexes | filesystem, CLI | Use the layout in `data-model.md` |
 | Skill registry | Core | Reuse workflows instead of starting from prompts | Load, list, activate `SKILL.md` | filesystem, YAML/frontmatter parser | Keep skill convention compatible |
 | Session management | Core | Restore long-lived work context | Session state, summary, active skills/agents | filesystem, SQLite optional | Session is not just chat history |
 | Run ledger | Core | Make each execution auditable | Run state, events, tool calls, summary | JSONL, filesystem, SQLite optional | Run is execution/audit unit |
@@ -24,11 +24,11 @@ This table summarizes Novi's feature surface. It does not define final priority 
 | Artifact store | Core | Track outputs and evidence | Save/index artifacts, hash, metadata | filesystem, object storage later | Memory should reference artifacts |
 | Context pack | Core | Control and reproduce model context | Compile session/run/skill/memory/tool context | kernel adapters | Do not blindly append full history |
 | Agent participants | Core | Support different purposes, permissions, tools | Record role, scope, outputs, audit boundary | kernels, policy | Multi-agent-capable, not graph-first |
-| Project participants | Core/Early | Support multiple human participants in one project | Identity, role, permission, ownership, audit attribution | local identity, GitHub/GitLab later, SSO later | Foundation for human collaboration |
-| Cowork assignments | Early | Assign scoped work to a human participant or worker | Assignment, context scope, output, comments, review | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab later | Controlled collaboration, not free chat |
+| Project participants | Next | Support multiple human participants in one project | Identity, role, permission, ownership, audit attribution | local identity, GitHub/GitLab later, SSO later | Defer full team model; keep v0 actor fields future-compatible |
+| Cowork assignments | Next | Assign scoped work to a human participant or worker | Assignment, context scope, output, comments, review | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab later | Defer until after the local core loop |
 | Simple kernel | Early | Validate core loop without external agent framework | Deterministic execution/test harness | local code | Avoid early DeepAgents lock-in |
-| DeepAgents/LangGraph kernel | Early | Support complex research and long tasks | Kernel adapter, tool wrapping, event bridge | DeepAgents, LangGraph | Execution kernel, not state owner |
-| Research/search | Early | Retrieve sources and external information | Search, fetch, source artifacts | Tavily/Brave/SearXNG, httpx, trafilatura | Provider replaceable |
+| DeepAgents/LangGraph kernel | Next | Support complex research and long tasks | Kernel adapter, tool wrapping, event bridge | DeepAgents, LangGraph | Execution kernel, not state owner |
+| Research/search | Early | Retrieve sources and external information | Search, fetch, source artifacts | `search_stub` first; Tavily/Brave/SearXNG/httpx later | Provider replaceable |
 | Deep research | Early/Next | Multi-round search, reading, evidence table, report | Research run workflow, evidence artifacts | DeepAgents/LangGraph, search, browser, PDF parser | Hosted provider allowed only as adapter |
 | CLI control plane | Early | Inspect and control Novi | init/run/inspect/approve/review | Typer, Rich, prompt-toolkit | First control surface |
 | Memory review | Early/Next | Make long-term knowledge evidence-based | Candidates, review, commit boundary | Markdown/JSONL, SQLite, vector later | Internal design discussed separately |
@@ -53,7 +53,7 @@ There are two layers:
 
 Collaboration with Codex, Claude Code, OpenHands, or other agents can usually be expressed through skills plus worker adapters. It does not need a free-form collaboration system.
 
-The main new product requirements come from multiple humans participating in the same project: identity, permission, ownership, comments, notifications, review state, conflict tracking, and audit attribution.
+The main later product requirements come from multiple humans participating in the same project: identity, permission, ownership, comments, notifications, review state, conflict tracking, and audit attribution.
 
 Cowork lets Novi assign scoped work to humans or external workers and bring the result back into the same session/run audit chain.
 
@@ -77,3 +77,8 @@ Minimum principles:
 - review/approval/comment must be attributable to a person or agent;
 - high-risk actions must pass Novi policy;
 - external collaborator logs are not Novi source of truth.
+
+V0 rule:
+
+- keep `actor`, `owner`, `reviewed_by`, and approval attribution fields future-compatible;
+- do not implement full project participants, cowork assignments, comments, notifications, or team permissions in Phase 1.

@@ -1,12 +1,12 @@
 # CLI Spec
 
-Status: Draft
+Status: Draft, v0 direction accepted
 
 The v0 CLI should expose the core loop before adding TUI, web dashboard, IM channels, or plugin distribution.
 
 ## Command Style
 
-Proposal:
+Decision:
 
 Prefer explicit nouns and verbs:
 
@@ -15,6 +15,8 @@ novi <noun> <verb> [args]
 ```
 
 Short aliases can come later after command behavior is stable.
+
+Commands use the active session by default. Session-scoped commands should also support `--session <id>` when practical, but the active-session path is the v0 happy path.
 
 ## Project Commands
 
@@ -96,6 +98,8 @@ The command should create:
 - `tool_calls.jsonl`;
 - `summary.md`;
 - `artifacts/`.
+
+V0 starts with a deterministic mock/local runner. A `research` run should create inspectable records and sample artifacts without requiring a real LLM or network search.
 
 ### `novi run list`
 
