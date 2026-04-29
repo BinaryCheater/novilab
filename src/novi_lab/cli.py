@@ -2,6 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .agents import create_agent, list_agents, load_agent
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
@@ -32,6 +33,39 @@ def cmd_skill_list(args):
     skills = discover_skills(Path.cwd())
     for skill in skills:
         print(f"{skill['id']}\t{skill['source']}\t{skill['description']}")
+    return 0
+
+
+def cmd_agent_list(args):
+    for agent in list_agents(Path.cwd()):
+        print(f"{agent['id']}\t{agent['role']}\t{agent.get('model_profile', '-')}")
+    return 0
+
+
+def cmd_agent_show(args):
+    agent = load_agent(Path.cwd(), args.agent_id)
+    print(f"Agent: {agent['id']}")
+    print(f"Role: {agent['role']}")
+    print(f"Description: {agent.get('description', '')}")
+    print(f"Model profile: {agent.get('model_profile', '-')}")
+    print("Skill refs:")
+    for skill_ref in agent.get("skill_refs", []):
+        print(f"- {skill_ref}")
+    print("Tool scope:")
+    for tool_id in agent.get("tool_scope", []):
+        print(f"- {tool_id}")
+    print("Context scope:")
+    for scope in agent.get("context_scope", []):
+        print(f"- {scope}")
+    print("Permission scope:")
+    for scope in agent.get("permission_scope", []):
+        print(f"- {scope}")
+    return 0
+
+
+def cmd_agent_create(args):
+    agent = create_agent(Path.cwd(), args.agent_id, args.role)
+    print(f"Created agent {agent['id']}: {agent['role']}")
     return 0
 
 
@@ -72,7 +106,8 @@ def cmd_session_inspect(args):
 
 def cmd_run_start(args):
     session = active_session(Path.cwd())
-    run = start_deterministic_run(Path.cwd(), session, args.type, args.objective)
+    agents = [load_agent(Path.cwd(), agent_id) for agent_id in args.agent]
+    run = start_deterministic_run(Path.cwd(), session, args.type, args.objective, agents)
     print(f"Started and completed run {run['id']}: {run['objective']}")
     return 0
 
@@ -161,6 +196,18 @@ def build_parser():
     skill_list = skill_sub.add_parser("list")
     skill_list.set_defaults(func=cmd_skill_list)
 
+    agent_parser = subparsers.add_parser("agent")
+    agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)
+    agent_list = agent_sub.add_parser("list")
+    agent_list.set_defaults(func=cmd_agent_list)
+    agent_show = agent_sub.add_parser("show")
+    agent_show.add_argument("agent_id")
+    agent_show.set_defaults(func=cmd_agent_show)
+    agent_create = agent_sub.add_parser("create")
+    agent_create.add_argument("agent_id")
+    agent_create.add_argument("--role", required=True)
+    agent_create.set_defaults(func=cmd_agent_create)
+
     session_parser = subparsers.add_parser("session")
     session_sub = session_parser.add_subparsers(dest="session_command", required=True)
     session_create = session_sub.add_parser("create")
@@ -180,6 +227,7 @@ def build_parser():
     run_start = run_sub.add_parser("start")
     run_start.add_argument("type", choices=["research", "analysis", "audit"])
     run_start.add_argument("objective")
+    run_start.add_argument("--agent", action="append", default=[])
     run_start.set_defaults(func=cmd_run_start)
     run_list = run_sub.add_parser("list")
     run_list.set_defaults(func=cmd_run_list)

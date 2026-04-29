@@ -36,6 +36,17 @@ def test_init_creates_local_workspace(tmp_path):
     assert "initialized" in result.stdout
 
 
+def test_init_creates_default_agent_definitions(tmp_path):
+    result = run_cli(tmp_path, "init")
+
+    assert result.returncode == 0, result.stderr
+    agent_dir = tmp_path / ".novi" / "agents"
+    assert (agent_dir / "agent_orchestrator.yaml").exists()
+    assert (agent_dir / "agent_auditor.yaml").exists()
+    assert "role: orchestrator" in (agent_dir / "agent_orchestrator.yaml").read_text()
+    assert "role: auditor" in (agent_dir / "agent_auditor.yaml").read_text()
+
+
 def test_skill_list_shows_builtin_skills(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -45,6 +56,23 @@ def test_skill_list_shows_builtin_skills(tmp_path):
     assert "research.review" in result.stdout
     assert "run.audit" in result.stdout
     assert "memory.curate" in result.stdout
+
+
+def test_agent_create_list_and_show(tmp_path):
+    run_cli(tmp_path, "init")
+
+    create_result = run_cli(tmp_path, "agent", "create", "agent_researcher", "--role", "researcher")
+    list_result = run_cli(tmp_path, "agent", "list")
+    show_result = run_cli(tmp_path, "agent", "show", "agent_researcher")
+
+    assert create_result.returncode == 0, create_result.stderr
+    assert "agent_researcher" in create_result.stdout
+    assert list_result.returncode == 0, list_result.stderr
+    assert "agent_orchestrator" in list_result.stdout
+    assert "agent_researcher" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "Role: researcher" in show_result.stdout
+    assert "Tool scope:" in show_result.stdout
 
 
 def test_session_create_writes_session_records(tmp_path):
@@ -74,6 +102,38 @@ def test_run_start_creates_auditable_deterministic_records(tmp_path):
     assert (run_dir / "tool_calls.jsonl").exists()
     assert (run_dir / "summary.md").exists()
     assert list((run_dir / "artifacts").glob("*.md"))
+
+
+def test_run_start_with_selected_agents_records_sequential_steps(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "agent", "create", "agent_researcher", "--role", "researcher")
+    run_cli(tmp_path, "session", "create", "agent run")
+
+    result = run_cli(
+        tmp_path,
+        "run",
+        "start",
+        "research",
+        "compare two planning approaches",
+        "--agent",
+        "agent_researcher",
+        "--agent",
+        "agent_auditor",
+    )
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    run_text = (run_dir / "run.yaml").read_text()
+    events_text = (run_dir / "events.jsonl").read_text()
+    summary_text = (run_dir / "summary.md").read_text()
+    artifacts = list((run_dir / "artifacts").glob("*-agent-step.md"))
+
+    assert "agent_researcher" in run_text
+    assert "agent_auditor" in run_text
+    assert "AgentStepCompleted" in events_text
+    assert "2 agent step artifacts" in summary_text
+    assert len(artifacts) == 2
 
 
 def test_run_inspect_and_memory_review_explain_outputs(tmp_path):

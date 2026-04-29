@@ -72,6 +72,7 @@ def init_workspace(root):
         "artifacts",
         "approvals",
         "skills",
+        "agents",
     ]:
         (base / relative).mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +110,9 @@ def init_workspace(root):
         path = base / "memory" / memory_file
         if not path.exists():
             path.write_text("" if path.suffix == ".jsonl" else "# Project Memory\n", encoding="utf-8")
+    from .agents import write_default_agents
+
+    write_default_agents(root)
     return base
 
 

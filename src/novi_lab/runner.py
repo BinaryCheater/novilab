@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from .agents import agent_snapshot, load_agent
 from .ids import new_id
 from .store import (
     append_jsonl,
@@ -26,12 +27,23 @@ def _event(run_id, event_type, session_id=None, agent_id=None, summary="", paylo
     }
 
 
-def start_deterministic_run(root, session, run_type, objective):
+def _selected_agents(root, agents):
+    if agents:
+        return agents
+    return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
+
+
+def start_deterministic_run(root, session, run_type, objective, agents=None):
     now = utc_now()
     run_id = new_id("run")
     run_dir = create_run_dir(root, run_id)
-    orchestrator = "agent_orchestrator"
+    selected_agents = _selected_agents(root, agents or [])
+    participants = [agent_snapshot(agent, now) for agent in selected_agents]
+    orchestrator = participants[0]["agent_id"]
     auditor = "agent_auditor"
+    for participant in participants:
+        if participant["role"] == "auditor":
+            auditor = participant["agent_id"]
 
     run_record = {
         "id": run_id,
@@ -43,26 +55,7 @@ def start_deterministic_run(root, session, run_type, objective):
         "updated_at": now,
         "actor": "local_user",
         "skill_refs": ["research.review"] if run_type == "research" else [],
-        "participants": [
-            {
-                "agent_id": orchestrator,
-                "role": "orchestrator",
-                "status": "active",
-                "joined_at": now,
-                "tool_scope": ["search_stub.query"],
-                "context_scope": ["project", "session", "skill", "tools"],
-                "permission_scope": ["read_only"],
-            },
-            {
-                "agent_id": auditor,
-                "role": "auditor",
-                "status": "completed",
-                "joined_at": now,
-                "tool_scope": [],
-                "context_scope": ["run_records"],
-                "permission_scope": ["read_only"],
-            },
-        ],
+        "participants": participants,
         "context_pack_ids": [],
         "artifact_ids": [],
         "summary_path": str(run_dir / "summary.md"),
@@ -88,6 +81,50 @@ def start_deterministic_run(root, session, run_type, objective):
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))
+
+    for index, participant in enumerate(participants, start=1):
+        step_artifact_id = new_id("art")
+        step_path = run_dir / "artifacts" / f"{step_artifact_id}-agent-step.md"
+        step_path.write_text(
+            "\n".join(
+                [
+                    f"# Agent Step {index}",
+                    "",
+                    f"Agent: {participant['agent_id']}",
+                    f"Role: {participant['role']}",
+                    f"Objective: {objective}",
+                    "",
+                    "This deterministic step records the selected Novi agent participant and its scoped execution boundary.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        step_record = {
+            "id": step_artifact_id,
+            "type": "agent_step_note",
+            "path": str(step_path),
+            "run_id": run_id,
+            "created_at": utc_now(),
+            "produced_by": participant["agent_id"],
+            "hash": content_hash(step_path),
+            "hash_algorithm": "sha256",
+            "mime_type": "text/markdown",
+            "size_bytes": step_path.stat().st_size,
+        }
+        write_yaml(run_dir / "artifacts" / f"{step_artifact_id}.yaml", step_record)
+        run_record["artifact_ids"].append(step_artifact_id)
+        append_jsonl(
+            run_dir / "events.jsonl",
+            _event(
+                run_id,
+                "AgentStepCompleted",
+                session["id"],
+                participant["agent_id"],
+                f"{participant['agent_id']} completed deterministic step.",
+                {"artifact_id": step_artifact_id, "step_index": index},
+            ),
+        )
 
     tool_call_id = new_id("tc")
     tool_call = {
@@ -164,7 +201,7 @@ def start_deterministic_run(root, session, run_type, objective):
             f"Status: completed",
             f"Objective: {objective}",
             "",
-            "The deterministic local runner wrote a context pack, one read-only tool call, one artifact, and one memory candidate.",
+            f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one read-only tool call, one research note artifact, and one memory candidate.",
             "",
         ]
     )
