@@ -280,6 +280,8 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     result = run_cli(tmp_path, "run", "start", "research", "invoke adapter", "--kernel", "deepagents")
 
     assert result.returncode == 0, result.stderr
+    assert "Response:" in result.stdout
+    assert "deepagents response" in result.stdout
     run_id = parse_id(result.stdout, "run_")
     run_dir = tmp_path / ".novi" / "runs" / run_id
     response_text = (run_dir / "response.md").read_text()
@@ -298,6 +300,33 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     assert "adapter smoke" in tool_calls
     assert '"source": "runner_preflight"' in tool_calls
     assert '"source": "deepagents_model"' in tool_calls
+
+    output_result = run_cli(tmp_path, "run", "output", "latest")
+    trace_result = run_cli(tmp_path, "run", "trace", "latest")
+
+    assert output_result.returncode == 0, output_result.stderr
+    assert "deepagents response" in output_result.stdout
+    assert trace_result.returncode == 0, trace_result.stderr
+    assert "Model calls:" in trace_result.stdout
+    assert "DeepAgents messages:" in trace_result.stdout
+    assert "deepagents_model" in trace_result.stdout
+
+
+def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
+    monkeypatch.setenv("NOVI_MODEL_PROVIDER", "openai_chat")
+    monkeypatch.setenv("NOVI_MODEL", "Pro/zai-org/GLM-4.7")
+    monkeypatch.setenv("NOVI_API_BASE", "https://api.siliconflow.cn/v1")
+    monkeypatch.setenv("NOVI_API_KEY", "secret-test-key")
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "doctor", "model")
+
+    assert result.returncode == 0, result.stderr
+    assert "Provider: openai_chat" in result.stdout
+    assert "Model: Pro/zai-org/GLM-4.7" in result.stdout
+    assert "Base URL: https://api.siliconflow.cn/v1" in result.stdout
+    assert "API key: set" in result.stdout
+    assert "secret-test-key" not in result.stdout
 
 
 def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, monkeypatch):

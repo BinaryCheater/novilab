@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -27,6 +28,31 @@ from .store import (
     update_project_config,
 )
 from .tools import execute_tool, list_tools, load_tool
+
+
+def _response_body(run_dir):
+    path = Path(run_dir) / "response.md"
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8").strip()
+    if text.startswith("# Model Response"):
+        return text.replace("# Model Response", "", 1).strip()
+    return text
+
+
+def _run_id_arg(root, value):
+    if value != "latest":
+        return value
+    session = active_session(root)
+    run_id = session.get("current_run_id")
+    if not run_id:
+        raise RuntimeError("No latest run in active session.")
+    return run_id
+
+
+def _run_dir(root, run_id):
+    base = require_workspace(root)
+    return base / "runs" / run_id
 
 
 def cmd_init(args):
@@ -190,6 +216,11 @@ def cmd_run_start(args):
     agents = [load_agent(Path.cwd(), agent_id) for agent_id in args.agent]
     run = start_deterministic_run(Path.cwd(), session, args.type, args.objective, agents, kernel=args.kernel)
     print(f"Started and completed run {run['id']}: {run['objective']}")
+    body = _response_body(require_workspace(Path.cwd()) / "runs" / run["id"])
+    if body:
+        print("")
+        print("Response:")
+        print(body)
     return 0
 
 
@@ -246,6 +277,47 @@ def cmd_run_prompt(args):
     return 0
 
 
+def cmd_run_output(args):
+    run_id = _run_id_arg(Path.cwd(), args.run_id)
+    run_dir = _run_dir(Path.cwd(), run_id)
+    body = _response_body(run_dir)
+    if not body:
+        raise RuntimeError(f"Response not found for run: {run_id}")
+    print(body)
+    return 0
+
+
+def cmd_run_trace(args):
+    run_id = _run_id_arg(Path.cwd(), args.run_id)
+    run_dir = _run_dir(Path.cwd(), run_id)
+    print(f"Run: {run_id}")
+    print("Model calls:")
+    for call in read_jsonl(run_dir / "model_calls.jsonl"):
+        provider = call.get("model_provider") or "-"
+        model = call.get("model_profile") or "-"
+        print(f"- {call.get('status')} {call.get('kernel')} {provider} {model}")
+        if call.get("error"):
+            print(f"  error: {call['error']}")
+    print("DeepAgents messages:")
+    messages = read_jsonl(run_dir / "deepagents_messages.jsonl")
+    if not messages:
+        print("- none")
+    for message in messages:
+        content = str(message.get("content", "")).replace("\n", " ")
+        if len(content) > 120:
+            content = content[:117] + "..."
+        print(f"- {message.get('index')} {message.get('role')}: {content}")
+        if message.get("tool_calls"):
+            print(f"  tool_calls: {message['tool_calls']}")
+    print("Tool calls:")
+    tool_calls = read_jsonl(run_dir / "tool_calls.jsonl")
+    if not tool_calls:
+        print("- none")
+    for call in tool_calls:
+        print(f"- {call.get('tool_id')} {call.get('status')} {call.get('source', '-')}")
+    return 0
+
+
 def cmd_memory_review(args):
     candidates = [candidate for candidate in memory_candidates(Path.cwd()) if candidate.get("status") == "proposed"]
     if not candidates:
@@ -272,6 +344,18 @@ def cmd_status(args):
     config = project_config(Path.cwd())
     print(f"Workspace: {config.get('workspace')}")
     print(f"Active session: {config.get('active_session_id') or '-'}")
+    return 0
+
+
+def cmd_doctor_model(args):
+    provider = os.environ.get("NOVI_MODEL_PROVIDER", "deepagents_default")
+    model = os.environ.get("NOVI_MODEL", "openai:gpt-4.1-mini")
+    base_url = os.environ.get("NOVI_API_BASE") or os.environ.get("OPENAI_API_BASE") or "-"
+    api_key = os.environ.get("NOVI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    print(f"Provider: {provider}")
+    print(f"Model: {model}")
+    print(f"Base URL: {base_url}")
+    print(f"API key: {'set' if api_key else 'unset'}")
     return 0
 
 
@@ -361,6 +445,12 @@ def build_parser():
     run_prompt = run_sub.add_parser("prompt")
     run_prompt.add_argument("run_id")
     run_prompt.set_defaults(func=cmd_run_prompt)
+    run_output = run_sub.add_parser("output")
+    run_output.add_argument("run_id")
+    run_output.set_defaults(func=cmd_run_output)
+    run_trace = run_sub.add_parser("trace")
+    run_trace.add_argument("run_id")
+    run_trace.set_defaults(func=cmd_run_trace)
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)
@@ -372,6 +462,11 @@ def build_parser():
     memory_reject = memory_sub.add_parser("reject")
     memory_reject.add_argument("candidate_id")
     memory_reject.set_defaults(func=cmd_memory_reject)
+
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_sub = doctor_parser.add_subparsers(dest="doctor_command", required=True)
+    doctor_model = doctor_sub.add_parser("model")
+    doctor_model.set_defaults(func=cmd_doctor_model)
 
     return parser
 
