@@ -188,7 +188,7 @@ def cmd_session_inspect(args):
 def cmd_run_start(args):
     session = active_session(Path.cwd())
     agents = [load_agent(Path.cwd(), agent_id) for agent_id in args.agent]
-    run = start_deterministic_run(Path.cwd(), session, args.type, args.objective, agents)
+    run = start_deterministic_run(Path.cwd(), session, args.type, args.objective, agents, kernel=args.kernel)
     print(f"Started and completed run {run['id']}: {run['objective']}")
     return 0
 
@@ -351,6 +351,7 @@ def build_parser():
     run_start.add_argument("type", choices=["research", "analysis", "audit"])
     run_start.add_argument("objective")
     run_start.add_argument("--agent", action="append", default=[])
+    run_start.add_argument("--kernel", choices=["simple", "deepagents"], default="simple")
     run_start.set_defaults(func=cmd_run_start)
     run_list = run_sub.add_parser("list")
     run_list.set_defaults(func=cmd_run_list)

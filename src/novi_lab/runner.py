@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .agents import agent_snapshot, load_agent
 from .ids import new_id
+from .kernels import validate_kernel
 from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
@@ -73,7 +74,8 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
-def start_deterministic_run(root, session, run_type, objective, agents=None):
+def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple"):
+    validate_kernel(kernel)
     now = utc_now()
     run_id = new_id("run")
     run_dir = create_run_dir(root, run_id)
@@ -94,6 +96,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
         "created_at": now,
         "updated_at": now,
         "actor": "local_user",
+        "kernel": kernel,
         "skill_refs": ["research.review"] if run_type == "research" else [],
         "participants": participants,
         "context_pack_ids": [],
@@ -121,7 +124,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))
-    write_prompt_pack(root, run_dir, run_record, context)
+    write_prompt_pack(root, run_dir, run_record, context, kernel=kernel)
 
     for index, participant in enumerate(participants, start=1):
         step_artifact_id = new_id("art")

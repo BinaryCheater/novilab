@@ -26,6 +26,13 @@ def parse_id(output, prefix):
     return match.group(1)
 
 
+def test_project_requires_python_311_for_deepagents_adapter():
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+
+    assert 'requires-python = ">=3.11"' in pyproject
+    assert "deepagents" in pyproject
+
+
 def test_init_creates_local_workspace(tmp_path):
     result = run_cli(tmp_path, "init")
 
@@ -185,19 +192,54 @@ def test_run_writes_prompt_pack_and_human_readable_timeline(tmp_path):
     prompt_text = (run_dir / "prompt.md").read_text()
     timeline_text = (run_dir / "timeline.md").read_text()
     request_text = (run_dir / "model_request.yaml").read_text()
+    manifest_text = (run_dir / "prompt_parts" / "manifest.yaml").read_text()
+    response_text = (run_dir / "response.md").read_text()
+    model_calls_text = (run_dir / "model_calls.jsonl").read_text()
     prompt_result = run_cli(tmp_path, "run", "prompt", run_id)
 
+    assert (run_dir / "prompt_parts" / "00-system.md").exists()
+    assert (run_dir / "prompt_parts" / "20-agent.md").exists()
+    assert (run_dir / "prompt_parts" / "40-tools.md").exists()
     assert "Novi Lab System Prompt" in prompt_text
     assert "Agent: agent_orchestrator" in prompt_text
     assert "Skill: research.review" in prompt_text
     assert "Tool: search_stub.query" in prompt_text
     assert "Context Management" in prompt_text
     assert "prompt.md" in request_text
+    assert "prompt_parts/00-system.md" in request_text
     assert "model_profile: deterministic-local" in request_text
+    assert "sha256" in manifest_text
+    assert "No model executor connected" in response_text
+    assert '"status": "not_connected"' in model_calls_text
     assert "RunCreated" in timeline_text
     assert "ToolExecuted" in timeline_text
     assert prompt_result.returncode == 0, prompt_result.stderr
     assert "Novi Lab System Prompt" in prompt_result.stdout
+
+
+def test_run_start_records_selected_simple_kernel(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "kernel run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "record kernel", "--kernel", "simple")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_text = (tmp_path / ".novi" / "runs" / run_id / "run.yaml").read_text()
+    request_text = (tmp_path / ".novi" / "runs" / run_id / "model_request.yaml").read_text()
+
+    assert "kernel: simple" in run_text
+    assert "kernel: simple" in request_text
+
+
+def test_deepagents_kernel_requires_optional_dependency(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "deepagents run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "try deepagents", "--kernel", "deepagents")
+
+    assert result.returncode == 1
+    assert "DeepAgents kernel requires optional dependency" in result.stderr
 
 
 def test_memory_candidate_has_markdown_companion(tmp_path):

@@ -1,6 +1,8 @@
+from hashlib import sha256
 from pathlib import Path
 
 from .skills import discover_skills
+from .store import append_jsonl
 from .tools import list_tools
 
 
@@ -29,14 +31,24 @@ def _by_id(items):
     return {item["id"]: item for item in items}
 
 
-def build_prompt_markdown(root, run_record, context_pack):
+def _part_record(path, content):
+    digest = sha256(content.encode("utf-8")).hexdigest()
+    return {
+        "path": str(path),
+        "hash": digest,
+        "hash_algorithm": "sha256",
+        "size_bytes": len(content.encode("utf-8")),
+    }
+
+
+def build_prompt_parts(root, run_record, context_pack):
     skills = _by_id(discover_skills(root))
     tools = _by_id(list_tools(root))
     participants = run_record.get("participants", [])
     primary_agent = participants[0] if participants else {}
-    lines = [
-        SYSTEM_PROMPT.strip(),
-        "",
+    system = SYSTEM_PROMPT.strip() + "\n"
+    run_context = "\n".join(
+        [
         "# Run",
         "",
         f"- Run ID: {run_record['id']}",
@@ -59,48 +71,92 @@ def build_prompt_markdown(root, run_record, context_pack):
         "",
         "## Includes",
         "",
-    ]
-    lines.extend(f"- {item}" for item in context_pack.get("includes", []))
-    lines.extend(["", "## Excludes", ""])
-    lines.extend(f"- {item}" for item in context_pack.get("excludes", []))
+        *[f"- {item}" for item in context_pack.get("includes", [])],
+        "",
+        "## Excludes",
+        "",
+        *[f"- {item}" for item in context_pack.get("excludes", [])],
+        "",
+        ]
+    )
 
-    lines.extend(["", "# Skills", ""])
+    skill_lines = ["# Skills", ""]
     for skill_ref in primary_agent.get("skill_refs", []) or run_record.get("skill_refs", []):
         skill = skills.get(skill_ref, {"description": ""})
-        lines.append(f"## Skill: {skill_ref}")
-        lines.append("")
-        lines.append(skill.get("description", ""))
-        lines.append("")
+        skill_lines.extend([f"## Skill: {skill_ref}", "", skill.get("description", ""), ""])
 
-    lines.extend(["# Tools", ""])
+    tool_lines = ["# Tools", ""]
     for tool_id in primary_agent.get("tool_scope", []):
         tool = tools.get(tool_id)
         if not tool:
             continue
-        lines.append(f"## Tool: {tool_id}")
-        lines.append("")
-        lines.append(f"- Risk: {tool.get('risk', '-')}")
-        lines.append(f"- Policy: {tool.get('policy', '-')}")
-        lines.append(f"- Description: {tool.get('description', '')}")
-        lines.append(f"- Input schema: {tool.get('input_schema', {})}")
-        lines.append("")
+        tool_lines.extend(
+            [
+                f"## Tool: {tool_id}",
+                "",
+                f"- Risk: {tool.get('risk', '-')}",
+                f"- Policy: {tool.get('policy', '-')}",
+                f"- Description: {tool.get('description', '')}",
+                f"- Input schema: {tool.get('input_schema', {})}",
+                "",
+            ]
+        )
 
-    return "\n".join(lines).strip() + "\n"
+    current_task = "\n".join(["# Current Task", "", run_record["objective"], ""])
+    return [
+        ("00-system.md", system),
+        ("20-agent.md", run_context.strip() + "\n"),
+        ("30-skills.md", "\n".join(skill_lines).strip() + "\n"),
+        ("40-tools.md", "\n".join(tool_lines).strip() + "\n"),
+        ("80-current-task.md", current_task),
+    ]
 
 
-def write_prompt_pack(root, run_dir, run_record, context_pack):
+def build_prompt_markdown(root, run_record, context_pack):
+    return "\n\n".join(content.strip() for _, content in build_prompt_parts(root, run_record, context_pack)) + "\n"
+
+
+def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
     prompt_path = Path(run_dir) / "prompt.md"
     request_path = Path(run_dir) / "model_request.yaml"
-    prompt_path.write_text(build_prompt_markdown(root, run_record, context_pack), encoding="utf-8")
+    parts_dir = Path(run_dir) / "prompt_parts"
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    part_records = []
+    prompt_parts = build_prompt_parts(root, run_record, context_pack)
+    for filename, content in prompt_parts:
+        path = parts_dir / filename
+        path.write_text(content, encoding="utf-8")
+        part_records.append(_part_record(path.relative_to(run_dir), content))
+    prompt_path.write_text("\n\n".join(content.strip() for _, content in prompt_parts) + "\n", encoding="utf-8")
+    response_path = Path(run_dir) / "response.md"
+    response_path.write_text(
+        "# Model Response\n\nNo model executor connected. This run was produced by the simple kernel.\n",
+        encoding="utf-8",
+    )
     request = {
         "run_id": run_record["id"],
         "agent_id": run_record.get("participants", [{}])[0].get("agent_id"),
         "model_profile": run_record.get("participants", [{}])[0].get("model_profile", context_pack.get("model_profile")),
+        "kernel": kernel,
         "prompt_path": str(prompt_path),
-        "response_path": str(Path(run_dir) / "response.md"),
+        "prompt_parts": part_records,
+        "response_path": str(response_path),
         "executor": "not_connected",
     }
     from .store import write_yaml
 
+    write_yaml(parts_dir / "manifest.yaml", {"parts": part_records})
     write_yaml(request_path, request)
+    append_jsonl(
+        Path(run_dir) / "model_calls.jsonl",
+        {
+            "run_id": run_record["id"],
+            "agent_id": request["agent_id"],
+            "model_profile": request["model_profile"],
+            "kernel": kernel,
+            "status": "not_connected",
+            "prompt_path": str(prompt_path),
+            "response_path": str(response_path),
+        },
+    )
     return prompt_path, request_path
