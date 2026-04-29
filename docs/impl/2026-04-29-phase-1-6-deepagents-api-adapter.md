@@ -19,6 +19,15 @@ export OPENAI_API_KEY=...
 export NOVI_MODEL=openai:gpt-4.1-mini
 ```
 
+For OpenAI-compatible chat-completions providers, including SiliconFlow:
+
+```bash
+export NOVI_MODEL_PROVIDER=openai_chat
+export NOVI_API_KEY=...
+export NOVI_API_BASE=https://api.siliconflow.com/v1
+export NOVI_MODEL=Qwen/QwQ-32B
+```
+
 Run:
 
 ```bash
@@ -28,6 +37,8 @@ novi run start research "summarize this project" --kernel deepagents
 ```
 
 If the selected agent has `model_profile: deterministic-local`, the DeepAgents adapter uses `NOVI_MODEL` or falls back to `openai:gpt-4.1-mini`.
+
+When `NOVI_MODEL_PROVIDER=openai_chat`, the adapter constructs a `langchain_openai.ChatOpenAI` model with `use_responses_api=False` and passes that model instance to DeepAgents. This path is intended for providers that implement OpenAI chat completions but not OpenAI Responses.
 
 ## Implemented
 
@@ -39,6 +50,7 @@ If the selected agent has `model_profile: deterministic-local`, the DeepAgents a
 - DeepAgents receives Novi-wrapped tools instead of unrestricted native tools.
 - Tool wrappers call `execute_tool()` and append records to `tool_calls.jsonl`.
 - DeepAgents returned virtual files are exported into `deepagents_files/`, indexed in `run.yaml`, and recorded as artifact metadata.
+- `NOVI_MODEL_PROVIDER=openai_chat` supports OpenAI-compatible chat-completions APIs by passing a configured `ChatOpenAI` instance into DeepAgents.
 
 ## Exposed Novi-Wrapped Tools
 

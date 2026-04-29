@@ -1,8 +1,8 @@
 import json
-import os
 from pathlib import Path
 
 from .ids import new_id
+from .model_providers import resolve_deepagents_model
 from .store import append_jsonl, content_hash, utc_now, write_yaml
 from .tools import execute_tool
 
@@ -142,12 +142,10 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     prompt_text = Path(prompt_path).read_text(encoding="utf-8")
     started_at = utc_now()
     response_path = Path(run_dir) / "response.md"
-    model_profile = participant.get("model_profile") or "openai:gpt-4.1-mini"
-    if model_profile == "deterministic-local":
-        model_profile = os.environ.get("NOVI_MODEL", "openai:gpt-4.1-mini")
+    model, model_record = resolve_deepagents_model(participant)
     try:
         agent = create_deep_agent(
-            model=model_profile,
+            model=model,
             tools=tools,
             system_prompt=prompt_text,
             name=participant.get("agent_id"),
@@ -161,7 +159,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
             {
                 "run_id": run_record["id"],
                 "agent_id": participant.get("agent_id"),
-                "model_profile": model_profile,
+                **model_record,
                 "kernel": "deepagents",
                 "status": "success",
                 "started_at": started_at,
@@ -178,7 +176,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
             {
                 "run_id": run_record["id"],
                 "agent_id": participant.get("agent_id"),
-                "model_profile": model_profile,
+                **model_record,
                 "kernel": "deepagents",
                 "status": "error",
                 "started_at": started_at,

@@ -296,6 +296,67 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     assert "adapter smoke" in tool_calls
 
 
+def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, monkeypatch):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOVI_MODEL_PROVIDER", "openai_chat")
+    monkeypatch.setenv("NOVI_MODEL", "Qwen/QwQ-32B")
+    monkeypatch.setenv("NOVI_API_BASE", "https://api.siliconflow.com/v1")
+    monkeypatch.setenv("NOVI_API_KEY", "test-key")
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "siliconflow compatible run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke compatible chat", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+
+    assert "model=Qwen/QwQ-32B" in response_text
+    assert "base_url=https://api.siliconflow.com/v1" in response_text
+    assert "responses=False" in response_text
+    assert '"model_provider": "openai_chat"' in model_calls
+
+
 def test_memory_candidate_has_markdown_companion(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "memory markdown run")
