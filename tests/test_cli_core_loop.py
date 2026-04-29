@@ -142,6 +142,16 @@ def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
         "--arg",
         "path=note.md",
     )
+    root_relative = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.read",
+        "--agent",
+        "agent_reader",
+        "--arg",
+        "path=/note.md",
+    )
 
     assert blocked.returncode == 0, blocked.stderr
     assert "blocked" in blocked.stdout
@@ -149,6 +159,9 @@ def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
     assert allowed.returncode == 0, allowed.stderr
     assert "success" in allowed.stdout
     assert "local evidence" in allowed.stdout
+    assert root_relative.returncode == 0, root_relative.stderr
+    assert "success" in root_relative.stdout
+    assert "local evidence" in root_relative.stdout
 
 
 def test_session_create_writes_session_records(tmp_path):

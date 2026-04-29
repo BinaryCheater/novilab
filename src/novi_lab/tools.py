@@ -104,7 +104,14 @@ def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
 
     if tool_id == "filesystem.read":
         workspace = Path(root).resolve()
-        requested = (workspace / args.get("path", "")).resolve()
+        raw_path = args.get("path", "")
+        path = Path(raw_path)
+        if path.is_absolute():
+            requested = path.resolve()
+            if not str(requested).startswith(str(workspace)):
+                requested = (workspace / raw_path.lstrip("/")).resolve()
+        else:
+            requested = (workspace / raw_path).resolve()
         if not str(requested).startswith(str(workspace)):
             call["status"] = "blocked"
             call["policy_result"] = "blocked"
