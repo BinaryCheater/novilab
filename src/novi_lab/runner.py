@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .agents import agent_snapshot, load_agent
 from .ids import new_id
-from .kernels import validate_kernel
+from .kernels import run_deepagents_kernel, validate_kernel
 from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
@@ -124,7 +124,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))
-    write_prompt_pack(root, run_dir, run_record, context, kernel=kernel)
+    prompt_path, _ = write_prompt_pack(root, run_dir, run_record, context, kernel=kernel)
 
     for index, participant in enumerate(participants, start=1):
         step_artifact_id = new_id("art")
@@ -187,6 +187,10 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
                 {"tool_call_id": tool_call["id"], "block_reason": tool_call.get("block_reason")},
             ),
         )
+
+    if kernel == "deepagents":
+        run_deepagents_kernel(root, run_dir, run_record, prompt_path)
+        append_jsonl(run_dir / "events.jsonl", _event(run_id, "KernelExecuted", session["id"], tool_actor["agent_id"], "DeepAgents kernel completed."))
 
     artifact_id = new_id("art")
     artifact_path = run_dir / "artifacts" / f"{artifact_id}-research-note.md"

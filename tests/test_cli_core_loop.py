@@ -232,14 +232,62 @@ def test_run_start_records_selected_simple_kernel(tmp_path):
     assert "kernel: simple" in request_text
 
 
-def test_deepagents_kernel_requires_optional_dependency(tmp_path):
+def test_deepagents_kernel_without_api_is_actionable(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "deepagents run")
 
     result = run_cli(tmp_path, "run", "start", "research", "try deepagents", "--kernel", "deepagents")
 
     assert result.returncode == 1
-    assert "DeepAgents kernel requires optional dependency" in result.stderr
+    assert (
+        "DeepAgents kernel requires optional dependency" in result.stderr
+        or "DeepAgents execution failed" in result.stderr
+    )
+
+
+def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "        self.tools = tools",
+                "        self.system_prompt = system_prompt",
+                "        self.name = name",
+                "",
+                "    def invoke(self, payload):",
+                "        tool_result = self.tools[0](query='adapter smoke')",
+                "        return {'messages': [FakeMessage('deepagents response\\n' + tool_result)]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "deepagents adapter run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke adapter", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    tool_calls = (run_dir / "tool_calls.jsonl").read_text()
+
+    assert "deepagents response" in response_text
+    assert '"status": "success"' in model_calls
+    assert '"kernel": "deepagents"' in model_calls
+    assert '"tool_id": "search_stub.query"' in tool_calls
+    assert "adapter smoke" in tool_calls
 
 
 def test_memory_candidate_has_markdown_companion(tmp_path):
