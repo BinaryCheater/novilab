@@ -27,9 +27,12 @@ This repository is currently in specification mode.
 ## Project-Level Constraints
 
 - Actively use git to save progress at functional change points.
+- `docs/spec/development-process.md` is frozen. Do not edit it unless the user explicitly asks for a change to that spec.
+- Record implementation process notes under `docs/impl/`.
 
 ## Collaboration Rules
 
 - When adding detail, update the relevant spec and keep cross-links current.
 - Put unresolved choices in `docs/spec/open-questions.md`.
 - Avoid implementation work until the specs are accepted or the user explicitly asks for scaffolding.
+- If a needed process note does not change product or architecture decisions, put it in `docs/impl/` instead of `docs/spec/`.
