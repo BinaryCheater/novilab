@@ -73,6 +73,7 @@ def init_workspace(root):
         "approvals",
         "skills",
         "agents",
+        "tools",
     ]:
         (base / relative).mkdir(parents=True, exist_ok=True)
 

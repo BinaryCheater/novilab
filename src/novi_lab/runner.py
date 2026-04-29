@@ -11,6 +11,7 @@ from .store import (
     utc_now,
     write_yaml,
 )
+from .tools import execute_tool
 
 
 def _event(run_id, event_type, session_id=None, agent_id=None, summary="", payload=None):
@@ -126,23 +127,23 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
             ),
         )
 
-    tool_call_id = new_id("tc")
-    tool_call = {
-        "id": tool_call_id,
-        "run_id": run_id,
-        "tool_id": "search_stub.query",
-        "agent_id": orchestrator,
-        "status": "success",
-        "created_at": utc_now(),
-        "updated_at": utc_now(),
-        "args_ref": {"query": objective},
-        "result_ref": {"source": "deterministic_stub"},
-        "risk": "read_only",
-        "policy_result": "allowed",
-        "artifact_ids": [],
-    }
+    tool_actor = participants[0]
+    tool_call = execute_tool(root, run_id, tool_actor, "search_stub.query", {"query": objective})
     append_jsonl(run_dir / "tool_calls.jsonl", tool_call)
-    append_jsonl(run_dir / "events.jsonl", _event(run_id, "ToolExecuted", session["id"], orchestrator, "search_stub.query completed.", {"tool_call_id": tool_call_id}))
+    if tool_call["status"] == "success":
+        append_jsonl(run_dir / "events.jsonl", _event(run_id, "ToolExecuted", session["id"], tool_actor["agent_id"], "search_stub.query completed.", {"tool_call_id": tool_call["id"]}))
+    else:
+        append_jsonl(
+            run_dir / "events.jsonl",
+            _event(
+                run_id,
+                "ToolBlocked",
+                session["id"],
+                tool_actor["agent_id"],
+                f"search_stub.query blocked: {tool_call.get('block_reason', 'unknown')}.",
+                {"tool_call_id": tool_call["id"], "block_reason": tool_call.get("block_reason")},
+            ),
+        )
 
     artifact_id = new_id("art")
     artifact_path = run_dir / "artifacts" / f"{artifact_id}-research-note.md"
@@ -201,7 +202,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
             f"Status: completed",
             f"Objective: {objective}",
             "",
-            f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one read-only tool call, one research note artifact, and one memory candidate.",
+            f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one tool runtime call attempt, one research note artifact, and one memory candidate.",
             "",
         ]
     )

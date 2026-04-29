@@ -19,6 +19,7 @@ from .store import (
     require_workspace,
     update_project_config,
 )
+from .tools import list_tools, load_tool
 
 
 def cmd_init(args):
@@ -66,6 +67,29 @@ def cmd_agent_show(args):
 def cmd_agent_create(args):
     agent = create_agent(Path.cwd(), args.agent_id, args.role)
     print(f"Created agent {agent['id']}: {agent['role']}")
+    return 0
+
+
+def cmd_tool_list(args):
+    require_workspace(Path.cwd())
+    for tool in list_tools(Path.cwd()):
+        print(f"{tool['id']}\t{tool.get('risk', '-')}\t{tool.get('policy', '-')}\t{tool.get('description', '')}")
+    return 0
+
+
+def cmd_tool_show(args):
+    tool = load_tool(Path.cwd(), args.tool_id)
+    print(f"Tool: {tool['id']}")
+    print(f"Source: {tool.get('source', '-')}")
+    print(f"Description: {tool.get('description', '')}")
+    print(f"Risk: {tool.get('risk', '-')}")
+    print(f"Policy: {tool.get('policy', '-')}")
+    print("Input schema:")
+    for key, value in tool.get("input_schema", {}).items():
+        print(f"- {key}: {value}")
+    print("Output artifacts:")
+    for artifact_type in tool.get("output_artifacts", []):
+        print(f"- {artifact_type}")
     return 0
 
 
@@ -138,7 +162,8 @@ def cmd_run_inspect(args):
         print(f"- {context_id}")
     print("Tool calls:")
     for call in tool_calls:
-        print(f"- {call['tool_id']} {call['status']} {call.get('risk', '-')}")
+        detail = call.get("block_reason") if call.get("status") == "blocked" else call.get("risk", "-")
+        print(f"- {call['tool_id']} {call['status']} {detail}")
     print("Artifacts:")
     for artifact_id in run.get("artifact_ids", []):
         print(f"- {artifact_id}")
@@ -207,6 +232,14 @@ def build_parser():
     agent_create.add_argument("agent_id")
     agent_create.add_argument("--role", required=True)
     agent_create.set_defaults(func=cmd_agent_create)
+
+    tool_parser = subparsers.add_parser("tool")
+    tool_sub = tool_parser.add_subparsers(dest="tool_command", required=True)
+    tool_list = tool_sub.add_parser("list")
+    tool_list.set_defaults(func=cmd_tool_list)
+    tool_show = tool_sub.add_parser("show")
+    tool_show.add_argument("tool_id")
+    tool_show.set_defaults(func=cmd_tool_show)
 
     session_parser = subparsers.add_parser("session")
     session_sub = session_parser.add_subparsers(dest="session_command", required=True)

@@ -75,6 +75,21 @@ def test_agent_create_list_and_show(tmp_path):
     assert "Tool scope:" in show_result.stdout
 
 
+def test_tool_list_and_show_builtin_tool(tmp_path):
+    run_cli(tmp_path, "init")
+
+    list_result = run_cli(tmp_path, "tool", "list")
+    show_result = run_cli(tmp_path, "tool", "show", "search_stub.query")
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert "search_stub.query" in list_result.stdout
+    assert "read_only" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "Tool: search_stub.query" in show_result.stdout
+    assert "Risk: read_only" in show_result.stdout
+    assert "Policy: allowed" in show_result.stdout
+
+
 def test_session_create_writes_session_records(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -134,6 +149,50 @@ def test_run_start_with_selected_agents_records_sequential_steps(tmp_path):
     assert "AgentStepCompleted" in events_text
     assert "2 agent step artifacts" in summary_text
     assert len(artifacts) == 2
+
+
+def test_run_records_allowed_tool_runtime_result(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "tool run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "inspect local tool runtime")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    tool_calls = (tmp_path / ".novi" / "runs" / run_id / "tool_calls.jsonl").read_text()
+
+    assert '"tool_id": "search_stub.query"' in tool_calls
+    assert '"policy_result": "allowed"' in tool_calls
+    assert '"status": "success"' in tool_calls
+    assert '"executor": "novi_tool_runtime"' in tool_calls
+
+
+def test_run_records_blocked_tool_when_agent_lacks_scope(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "agent", "create", "agent_observer", "--role", "observer")
+    run_cli(tmp_path, "session", "create", "blocked tool run")
+
+    result = run_cli(
+        tmp_path,
+        "run",
+        "start",
+        "research",
+        "attempt scoped search",
+        "--agent",
+        "agent_observer",
+    )
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    inspect_result = run_cli(tmp_path, "run", "inspect", run_id)
+    tool_calls = (tmp_path / ".novi" / "runs" / run_id / "tool_calls.jsonl").read_text()
+    summary_text = (tmp_path / ".novi" / "runs" / run_id / "summary.md").read_text()
+
+    assert '"tool_id": "search_stub.query"' in tool_calls
+    assert '"policy_result": "blocked"' in tool_calls
+    assert '"status": "blocked"' in tool_calls
+    assert "search_stub.query blocked tool_not_in_agent_scope" in inspect_result.stdout
+    assert "one tool runtime call attempt" in summary_text
 
 
 def test_run_inspect_and_memory_review_explain_outputs(tmp_path):
