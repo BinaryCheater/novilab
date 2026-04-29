@@ -15,7 +15,7 @@ Phase 1 should implement the local core loop from the accepted v0 specs:
 
 ## Process Constraint
 
-`docs/spec/development-process.md` is frozen. Any future process notes should be recorded in `docs/impl/` unless the user explicitly approves changing that spec.
+Specs under `docs/spec/` are frozen unless the user explicitly approves a spec change. Development process and implementation notes should be recorded in `docs/impl/`.
 
 ## Next Step
 

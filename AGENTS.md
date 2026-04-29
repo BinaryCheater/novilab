@@ -1,12 +1,13 @@
 # Novi Lab Agent Guide
 
-This repository is currently in specification mode.
+This repository is moving from specification mode into Phase 1 planning.
 
 ## Start Here
 
 - Read `docs/spec/README.md` before proposing code or scaffolding.
 - Treat `novi_lab_repo_bootstrap_summary.md` as source background, not as an implementation checklist.
-- Keep new specs under `docs/spec/` until the project scope is confirmed.
+- Treat `docs/spec/` as the frozen accepted spec set unless the user explicitly approves a spec change.
+- Put development process notes and implementation records under `docs/impl/`.
 
 ## Product Principles
 
@@ -27,12 +28,11 @@ This repository is currently in specification mode.
 ## Project-Level Constraints
 
 - Actively use git to save progress at functional change points.
-- `docs/spec/development-process.md` is frozen. Do not edit it unless the user explicitly asks for a change to that spec.
-- Record implementation process notes under `docs/impl/`.
+- Files under `docs/spec/` are frozen. Ask the user before editing, moving, deleting, or adding spec files.
+- Development process docs and implementation process notes belong under `docs/impl/`.
 
 ## Collaboration Rules
 
-- When adding detail, update the relevant spec and keep cross-links current.
-- Put unresolved choices in `docs/spec/open-questions.md`.
+- When adding implementation detail, prefer `docs/impl/` or `docs/plans/` unless the user explicitly approves a spec update.
+- Put unresolved implementation choices in `docs/impl/` unless they require an approved spec change.
 - Avoid implementation work until the specs are accepted or the user explicitly asks for scaffolding.
-- If a needed process note does not change product or architecture decisions, put it in `docs/impl/` instead of `docs/spec/`.
