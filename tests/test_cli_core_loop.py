@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -378,6 +379,8 @@ def test_ask_records_messages_and_includes_recent_context(tmp_path):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(
             [
+                "import json",
+                "",
                 "class FakeMessage:",
                 "    def __init__(self, content):",
                 "        self.content = content",
@@ -387,8 +390,10 @@ def test_ask_records_messages_and_includes_recent_context(tmp_path):
                 "        self.system_prompt = system_prompt",
                 "",
                 "    def invoke(self, payload):",
+                "        with open('captured_payloads.jsonl', 'a', encoding='utf-8') as handle:",
+                "            handle.write(json.dumps({'system_prompt': self.system_prompt, 'messages': payload['messages']}, sort_keys=True) + '\\n')",
                 "        user = payload['messages'][-1]['content']",
-                "        marker = 'first question' in self.system_prompt",
+                "        marker = any(message.get('content') == 'first question' for message in payload['messages'][:-1])",
                 "        return {'messages': [FakeMessage(f'answer to {user}; saw_first={marker}')]}",
                 "",
                 "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
@@ -418,6 +423,20 @@ def test_ask_records_messages_and_includes_recent_context(tmp_path):
     assert recent_messages.exists()
     assert "first question" in recent_messages.read_text()
     assert "runner_preflight" not in (latest_run / "tool_calls.jsonl").read_text()
+    payloads = [
+        json.loads(line)
+        for line in (tmp_path / "captured_payloads.jsonl").read_text().splitlines()
+    ]
+    second_payload = payloads[-1]
+    assert second_payload["messages"] == [
+        {"content": "first question", "role": "user"},
+        {"content": "answer to first question; saw_first=False", "role": "assistant"},
+        {"content": "second question", "role": "user"},
+    ]
+    assert "first question" not in second_payload["system_prompt"]
+    assert "second question" not in second_payload["system_prompt"]
+    request_text = (latest_run / "model_request.yaml").read_text()
+    assert "model_messages_path:" in request_text
 
 
 def test_prompt_lists_deepagents_callable_tool_names(tmp_path):

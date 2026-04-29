@@ -51,8 +51,10 @@ When `NOVI_MODEL_PROVIDER=openai_chat`, the adapter constructs a `langchain_open
 ## Implemented
 
 - `--kernel deepagents` imports `deepagents.create_deep_agent`.
-- The adapter passes Novi's `prompt.md` as the DeepAgents `system_prompt`.
-- The adapter invokes DeepAgents with the run objective as the user message.
+- The adapter passes Novi's stable `system_prompt.md` as the DeepAgents `system_prompt`.
+- The adapter invokes DeepAgents with `model_messages.jsonl`, which contains recent session turns plus the current user message.
+- The adapter now passes recent session history as real chat `messages` rather than embedding prior turns only inside the system prompt.
+- `prompt.md` remains a human-readable archive; `system_prompt.md` is the stable executor system prompt and `model_messages.jsonl` is the executor message list.
 - Final output is written to `response.md`.
 - Model call status is appended to `model_calls.jsonl`.
 - DeepAgents receives Novi-wrapped tools instead of unrestricted native tools.
@@ -77,7 +79,7 @@ These wrappers preserve Novi's policy checks and scope enforcement.
 - Mapping DeepAgents built-in filesystem/edit/shell tools into Novi policy.
 - Write-local approval flow.
 - Shell approval flow.
-- Multi-turn session message ingestion.
+- Provider-native cache tuning beyond separating stable system prompt from dynamic chat messages.
 - DeepAgents subagent specs derived from Novi agents.
 - Persisting LangGraph checkpoints under `.novi/`.
 

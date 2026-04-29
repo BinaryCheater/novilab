@@ -3,7 +3,7 @@ from pathlib import Path
 
 from .ids import new_id
 from .model_providers import resolve_deepagents_model
-from .store import append_jsonl, content_hash, utc_now, write_yaml
+from .store import append_jsonl, content_hash, read_jsonl, utc_now, write_yaml
 from .tools import execute_tool
 
 
@@ -192,6 +192,10 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     tool_scope = participant.get("tool_scope", [])
     tools = [_tool_wrapper(root, run_dir, run_record["id"], participant, tool_id) for tool_id in tool_scope]
     prompt_text = Path(prompt_path).read_text(encoding="utf-8")
+    messages_path = Path(run_dir) / "model_messages.jsonl"
+    messages = read_jsonl(messages_path)
+    if not messages:
+        messages = [{"role": "user", "content": run_record["objective"]}]
     started_at = utc_now()
     response_path = Path(run_dir) / "response.md"
     model, model_record = resolve_deepagents_model(root, participant)
@@ -202,7 +206,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
             system_prompt=prompt_text,
             name=participant.get("agent_id"),
         )
-        result = agent.invoke({"messages": [{"role": "user", "content": run_record["objective"]}]})
+        result = agent.invoke({"messages": messages})
         response_text = _extract_response_text(result)
         messages_path = _archive_deepagents_messages(run_dir, result)
         exported_files = _export_deepagents_files(run_dir, run_record, result)
@@ -218,6 +222,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
                 "started_at": started_at,
                 "completed_at": utc_now(),
                 "prompt_path": str(prompt_path),
+                "model_messages_path": str(messages_path),
                 "response_path": str(response_path),
                 "messages_path": str(messages_path) if messages_path else None,
                 "exported_files": exported_files,
@@ -236,6 +241,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
                 "started_at": started_at,
                 "completed_at": utc_now(),
                 "prompt_path": str(prompt_path),
+                "model_messages_path": str(messages_path),
                 "response_path": str(response_path),
                 "error": str(exc),
             },

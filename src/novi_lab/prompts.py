@@ -141,8 +141,38 @@ def build_prompt_markdown(root, run_record, context_pack):
     return "\n\n".join(content.strip() for _, content in build_prompt_parts(root, run_record, context_pack)) + "\n"
 
 
+def build_system_prompt_markdown(root, run_record, context_pack):
+    stable_part_names = {"00-system.md", "30-skills.md", "40-tools.md"}
+    return "\n\n".join(
+        content.strip()
+        for filename, content in build_prompt_parts(root, run_record, context_pack)
+        if filename in stable_part_names
+    ) + "\n"
+
+
+def build_model_messages(root, run_record, limit=12):
+    messages = []
+    for message in session_messages(root, run_record["session_id"], limit=limit):
+        role = message.get("role")
+        content = message.get("content")
+        if role in {"user", "assistant"} and content:
+            messages.append({"role": role, "content": content})
+    if not messages or messages[-1] != {"role": "user", "content": run_record["objective"]}:
+        messages.append({"role": "user", "content": run_record["objective"]})
+    return messages
+
+
+def _write_jsonl(path, rows):
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
 def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
     prompt_path = Path(run_dir) / "prompt.md"
+    system_prompt_path = Path(run_dir) / "system_prompt.md"
+    model_messages_path = Path(run_dir) / "model_messages.jsonl"
     request_path = Path(run_dir) / "model_request.yaml"
     parts_dir = Path(run_dir) / "prompt_parts"
     parts_dir.mkdir(parents=True, exist_ok=True)
@@ -153,6 +183,8 @@ def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
         path.write_text(content, encoding="utf-8")
         part_records.append(_part_record(path.relative_to(run_dir), content))
     prompt_path.write_text("\n\n".join(content.strip() for _, content in prompt_parts) + "\n", encoding="utf-8")
+    system_prompt_path.write_text(build_system_prompt_markdown(root, run_record, context_pack), encoding="utf-8")
+    _write_jsonl(model_messages_path, build_model_messages(root, run_record))
     response_path = Path(run_dir) / "response.md"
     response_path.write_text(
         "# Model Response\n\nNo model executor connected. This run was produced by the simple kernel.\n",
@@ -168,6 +200,8 @@ def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
         "model_base_url": model_record["model_base_url"],
         "kernel": kernel,
         "prompt_path": str(prompt_path),
+        "system_prompt_path": str(system_prompt_path),
+        "model_messages_path": str(model_messages_path),
         "prompt_parts": part_records,
         "response_path": str(response_path),
         "executor": kernel,
@@ -186,8 +220,9 @@ def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
             "model_base_url": request["model_base_url"],
             "kernel": kernel,
             "status": "not_connected",
-            "prompt_path": str(prompt_path),
+            "prompt_path": str(system_prompt_path),
+            "model_messages_path": str(model_messages_path),
             "response_path": str(response_path),
         },
     )
-    return prompt_path, request_path
+    return system_prompt_path, request_path
