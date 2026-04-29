@@ -33,7 +33,9 @@ Decision:
 - Runs can record agent participants and their roles, even if v0 only uses orchestrator and auditor roles.
 - The CLI can inspect enough state to explain what happened.
 - V0 is for a single local researcher/developer in one project directory.
-- V0 starts with a deterministic mock/local runner rather than a real LLM dependency.
+- V0 starts with a deterministic mock/local runner and does not require a real LLM dependency.
+- Project-local model configuration can optionally connect an OpenAI-compatible chat-completions provider.
+- Multi-turn `novi ask` can append session messages, create a run, and archive provider/kernel request records.
 
 ## Should Have
 
@@ -43,6 +45,7 @@ Proposal:
 - A small tool registry.
 - Per-agent tool scope and context scope in run records.
 - A stub or local model runner interface.
+- An optional DeepAgents kernel adapter behind Novi-owned run/tool/audit boundaries.
 - Basic schema validation for specs and records.
 - A run summary file.
 - A session rolling summary file.

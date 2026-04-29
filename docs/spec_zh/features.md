@@ -22,15 +22,16 @@
 | Tool registry/runtime | Core | 所有能力统一授权、执行、记录 | tool specs、schema、execution、result normalization | local modules, MCP later | 外部工具不能绕过它 |
 | Policy/approval | Core | 控制风险和副作用 | risk check、approval gate、blocked state | CLI first, TUI/Web later | 先简单，不做复杂 policy DSL |
 | Artifact store | Core | 产物和证据可追踪 | 保存/索引 artifacts、hash、metadata | filesystem, object storage later | memory 应引用 artifacts |
-| Context pack | Core | 控制模型上下文和可复现性 | 编译 session/run/skill/memory/tool context | kernel adapters | 不盲目拼接完整历史 |
+| Context pack | Core | 控制模型上下文和可复现性 | 编译 session/run/skill/memory/tool context | kernel adapters | stable system prompt、structured chat messages 和 human archive 分离 |
 | Agent participants | Core | 支持不同用途、权限、工具集的 agent | 记录 role、scope、产出和审计边界 | kernels, policy | multi-agent-capable，不做复杂 agent graph 起步 |
+| Model provider configuration | Early | 可复现地连接真实 API provider | project-local model profile、base URL、secret handling、provider mode | OpenAI-compatible chat completions, Responses later | `.novi/novi.yaml` 优先；环境变量可 fallback |
 | Project participants | Core/Early | 支持一个 project 中有多个人类参与者 | identity、role、permission、ownership、audit attribution | local identity, GitHub/GitLab later, SSO later | 新增多人协作基础 |
 | Cowork assignments | Early | 把受控任务分派给人类 participant 或 worker | assignment、context scope、output、comments、review | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab later | 不是自由聊天，是受控协作 |
 | Simple kernel | Early | 不依赖外部 agent 框架验证核心闭环 | deterministic execution/test harness | local code | 防止过早绑定 DeepAgents |
-| DeepAgents/LangGraph kernel | Early | 支持复杂研究和长任务 | kernel adapter、tool wrapping、event bridge | DeepAgents, LangGraph | 执行内核，不拥有 Novi state |
+| DeepAgents/LangGraph kernel | Early/Next | 支持 API-backed 复杂研究和长任务 | kernel adapter、tool wrapping、event bridge | DeepAgents, LangGraph | 已有可选 Phase 1 prototype；后续补 streaming/checkpoints/builtin tool mapping |
 | Research/search | Early | 获取外部资料和来源 | search、fetch、source artifact | Tavily/Brave/SearXNG, httpx, trafilatura | provider 可替换 |
 | Deep research | Early/Next | 多轮搜索、阅读、证据表、报告 | research run workflow、evidence artifacts | DeepAgents/LangGraph, search, browser, PDF parser | 可接 hosted provider，但必须 artifact 化 |
-| CLI control plane | Early | 用户可以检查和控制 Novi | init/run/inspect/approve/review | Typer, Rich, prompt-toolkit | 第一控制面 |
+| CLI control plane | Early | 用户可以检查和控制 Novi | init/configure/ask/run/output/trace/inspect/approve/review | Typer, Rich, prompt-toolkit | 第一控制面；正常使用不应要求读 raw JSONL |
 | Memory review | Early/Next | 长期知识有证据和审核 | candidates、review、commit boundary | Markdown/JSONL, SQLite, vector later | 内部设计单独讨论 |
 | Coding worker | Next | 让外部 coding agent 完成补丁/测试 | 创建 coding run、限制 scope、捕获 diff/logs | Codex, Claude Code, OpenHands | 通常通过 skill + worker adapter 表达 |
 | Browser automation | Next | 处理动态网页、截图、登录态页面 | browser tools、screenshots、HTML artifacts | Playwright, browser-use, Browser MCP | 网络和登录需要 policy |

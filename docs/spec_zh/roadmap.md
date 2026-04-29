@@ -28,74 +28,82 @@ Proposal:
 
 Entry check:
 
-- [ ] 已读启动说明和 technical tooling 背景文档。
-- [ ] 已确认 Novi 不是 robot-first、不是 multi-agent-first、不是 Codex replacement。
-- [ ] 已确认 Novi core 拥有 sessions、runs、tools、artifacts、memory flow、policy 和 audit。
+- [x] 已读启动说明和 technical tooling 背景文档。
+- [x] 已确认 Novi 不是 robot-first、不是 multi-agent-first、不是 Codex replacement。
+- [x] 已确认 Novi core 拥有 sessions、runs、tools、artifacts、memory flow、policy 和 audit。
 
 Build check:
 
-- [ ] `architecture.md` 描述核心概念和边界。
-- [ ] `tooling-and-modules.md` 描述候选模块、外部项目和接入边界。
-- [ ] `features.md` 列出 core/early/next/later features。
-- [ ] `roadmap.md` 可作为开发检查清单。
-- [ ] `open-questions.md` 收集仍需确认的问题。
-- [ ] 中英文 spec 保持结构大体同步。
+- [x] `architecture.md` 描述核心概念和边界。
+- [x] `tooling-and-modules.md` 描述候选模块、外部项目和接入边界。
+- [x] `features.md` 列出 core/early/next/later features。
+- [x] `roadmap.md` 可作为开发检查清单。
+- [x] `open-questions.md` 收集仍需确认的问题。
+- [x] 中英文 spec 保持结构大体同步。
 
 Acceptance check:
 
-- [ ] 能解释 Novi 的一句话定位。
-- [ ] 能解释 v0 为什么不依赖 ROS/MCP/Web dashboard/复杂 multi-agent graph。
-- [ ] 能解释 Codex/Claude/OpenHands 为什么是 worker，而不是 Novi source of truth。
-- [ ] 能解释多个人类 project participants 和 agent participants 的区别。
+- [x] 能解释 Novi 的一句话定位。
+- [x] 能解释 v0 为什么不依赖 ROS/MCP/Web dashboard/复杂 multi-agent graph。
+- [x] 能解释 Codex/Claude/OpenHands 为什么是 worker，而不是 Novi source of truth。
+- [x] 能解释多个人类 project participants 和 agent participants 的区别。
 
 Defer:
 
-- [ ] 不定具体文件结构。
-- [ ] 不定详细数据模型。
-- [ ] 不定 memory 内部机制。
-- [ ] 不定完整 CLI 命令。
-- [ ] 不定具体交付日期。
+- [x] 不定具体交付日期。
+- [x] 完整 memory internals 后置。
+- [x] 完整 cowork/team model 后置。
 
 ## Phase 1：本地核心闭环
 
-目标：在不依赖复杂外部 agent 框架的情况下，让 Novi 可以创建、执行、记录、检查一个本地 run。
+目标：让 Novi 可以创建、执行、记录、检查一个本地 run，同时保留 deterministic local execution，并提供可选 API-backed DeepAgents 路径。
 
 Entry check:
 
-- [ ] Phase 0 的核心边界已经可接受。
-- [ ] 已决定先做 local-first。
-- [ ] 已决定第一控制面是 CLI。
-- [ ] 已决定 Simple Kernel 或等价 fallback 存在。
+- [x] Phase 0 的核心边界已经可接受。
+- [x] 已决定先做 local-first。
+- [x] 已决定第一控制面是 CLI。
+- [x] 已决定 Simple Kernel 或等价 fallback 存在。
+- [x] Phase 1 implementation plan 已存在于 `docs/plans/`。
 
 Build check:
 
-- [ ] project init 能创建本地 Novi workspace。
-- [ ] skill registry 能发现和列出 `SKILL.md`。
-- [ ] session 能创建、打开、列出、保存 summary。
-- [ ] run 能创建、更新状态、完成、失败。
-- [ ] run ledger 能记录 append-only events。
-- [ ] tool call log 与普通 event 分开。
-- [ ] artifact store 能登记本地产物。
-- [ ] tool registry 能列出本地 tools。
-- [ ] policy/approval 至少能表达 require approval / blocked。
-- [ ] context pack 能被生成并保存。
-- [ ] CLI 能 inspect project/session/run/tool/artifact。
-- [ ] Simple Kernel 能产生 deterministic run events。
+- [x] project init 能创建本地 Novi workspace。
+- [x] skill registry 能发现和列出 `SKILL.md`。
+- [x] session 能创建、打开、列出、保存 summary。
+- [x] run 能创建、更新状态、完成、失败。
+- [x] run ledger 能记录 append-only events。
+- [x] tool call log 与普通 event 分开。
+- [x] model call log 与 tool call 分开。
+- [x] artifact store 能登记本地产物。
+- [x] tool registry 能列出本地 tools。
+- [x] policy/approval 至少能表达 require approval / blocked。
+- [x] context pack 和 prompt archives 能被生成并保存。
+- [x] CLI 能 inspect project/session/run/tool/artifact。
+- [x] Simple Kernel 能产生 deterministic research/analysis/audit run events。
+- [x] project-local model config 能写入并检查。
+- [x] OpenAI-compatible chat-completions provider 可用于 API-backed runs。
+- [x] `novi ask` 能记录多轮 user/assistant messages 并创建 runs。
+- [x] `novi run output` 和 `novi run trace` 能展示模型输出和执行 trace。
+- [x] 可选 DeepAgents kernel 能调用 compatible provider，并把 read-only tool calls 路由到 Novi Tool Runtime。
+- [x] memory candidates 能 proposed/listed/accepted/rejected。
+- [x] development checkpoints 记录到 git，必要时记录到 `docs/impl/`。
 
 Acceptance check:
 
-- [ ] 用户能运行最小链路：init、skill list、session create、run start、run inspect。
-- [ ] 一个 run 的 objective、status、events、tool calls、artifacts 都能被查看。
-- [ ] 用户能回答“发生了什么、为什么、产物在哪里”。
-- [ ] 高风险或未授权工具不会绕过 policy 直接执行。
-- [ ] 即使没有真实 LLM，也能验证 core records。
+- [x] 用户能运行最小链路：init、skill list、session create、run start、run inspect。
+- [x] 用户能配置 compatible model provider，并运行 API-backed smoke test。
+- [x] 一个 run 的 objective、status、events、tool calls、model calls、artifacts 都能被查看。
+- [x] 用户能通过 CLI output/trace 回答“发生了什么、为什么、产物在哪里”。
+- [x] 高风险或未授权工具不会绕过 policy 直接执行。
+- [x] 即使没有真实 LLM，也能验证 core records。
 
 Defer:
 
 - [ ] 不接真实机器人。
 - [ ] 不做完整 memory 系统。
 - [ ] 不做 TUI/Web。
-- [ ] 不要求 DeepAgents/LangGraph 已接入。
+- [ ] DeepAgents advanced streaming、checkpoint/resume、subagent mapping、built-in write/shell tool mapping 后置。
 - [ ] 不做复杂 permission matrix。
 
 ## Phase 2：Research 与 Deep Research
@@ -117,8 +125,9 @@ Build check:
 - [ ] research run 能生成 evidence table。
 - [ ] research run 能生成 synthesis report。
 - [ ] report 中的重要 claim 能关联 source artifact。
-- [ ] DeepAgents/LangGraph kernel adapter 可以作为 serious kernel 候选接入。
-- [ ] DeepAgents tools 通过 Novi Tool Runtime 包装。
+- [x] DeepAgents/LangGraph kernel adapter 已作为 serious kernel 候选接入。
+- [x] 初始 DeepAgents read-only tools 已通过 Novi Tool Runtime 包装。
+- [ ] DeepAgents advanced built-ins、streaming、checkpoints 和 subagent mapping 需继续有控制地接入。
 - [ ] browser automation 的接入条件明确，即使暂不实现。
 
 Acceptance check:

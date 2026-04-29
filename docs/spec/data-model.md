@@ -29,6 +29,44 @@ YYYYMMDDTHHMMSSZ_<6-8 chars>
 
 The exact random alphabet can be chosen during implementation, but generated IDs must be stable once written.
 
+## ProjectConfig
+
+Decision:
+
+`.novi/novi.yaml` stores local project configuration.
+
+Required:
+
+- `version`
+- `workspace`
+- `created_at`
+- `updated_at`
+
+Optional:
+
+- `active_session_id`
+- `model`
+
+Initial model config shape:
+
+```yaml
+model:
+  provider: openai_chat
+  model: deepseek-ai/DeepSeek-V4-Flash
+  base_url: https://api.siliconflow.cn/v1
+  api_key: local-secret
+```
+
+Provider values:
+
+```text
+openai_chat
+openai_responses
+deterministic_local
+```
+
+Secret rule: local prototypes may store `api_key` in `.novi/novi.yaml`, but CLI output must redact it. Moving secrets into `.novi/secrets.yaml`, environment variables, or OS keychain remains an open hardening decision.
+
 ## SkillSpec
 
 Decision:
@@ -86,6 +124,27 @@ paused
 archived
 ```
 
+## MessageLogEntry
+
+Decision:
+
+Session message logs are stored as JSONL in `messages.jsonl`.
+
+Required:
+
+- `id`
+- `session_id`
+- `role`
+- `content`
+- `created_at`
+
+Optional:
+
+- `run_id`
+- `metadata`
+
+Initial provider requests include recent `user` and `assistant` turns as chat messages. Tool messages are archived in run trace files first; whether they become part of long-term session history is a separate context policy decision.
+
 ## RunSpec
 
 Decision:
@@ -105,6 +164,7 @@ Optional:
 - `completed_at`
 - `owner`
 - `actor`
+- `kernel`
 - `skill_refs`
 - `module_refs`
 - `participants`
@@ -239,6 +299,9 @@ Optional:
 - `tool_refs`
 - `permission_refs`
 - `messages_ref`
+- `system_prompt_ref`
+- `model_messages_ref`
+- `prompt_parts_ref`
 - `compiled_prompt_ref`
 
 Context packs should be inspectable after the run.
@@ -296,9 +359,21 @@ Optional:
 - `error`
 - `latency_ms`
 - `risk`
+- `source`
+- `executor`
 - `policy_result`
+- `block_reason`
 - `approval_id`
 - `artifact_ids`
+
+Tool call source values:
+
+```text
+manual
+runner_preflight
+deepagents_model
+system
+```
 
 Tool call status values:
 
@@ -312,6 +387,35 @@ success
 error
 cancelled
 ```
+
+## ModelCallRecord
+
+Decision:
+
+Model calls are logged separately from tool calls in `model_calls.jsonl`.
+
+Required:
+
+- `run_id`
+- `agent_id`
+- `kernel`
+- `status`
+- `prompt_path`
+- `response_path`
+
+Optional:
+
+- `model_provider`
+- `model_profile`
+- `model_base_url`
+- `started_at`
+- `completed_at`
+- `model_messages_path`
+- `system_prompt_path`
+- `exported_files`
+- `error`
+
+`prompt_path` points to a human-readable archive. `model_messages_path`, when present, points to the actual chat-message sequence passed toward the provider/kernel boundary.
 
 ## ArtifactRecord
 
@@ -497,6 +601,15 @@ project-root/
         run.yaml
         events.jsonl
         tool_calls.jsonl
+        model_calls.jsonl
+        system_prompt.md
+        model_messages.jsonl
+        model_request.yaml
+        prompt.md
+        prompt_parts/
+        deepagents_messages.jsonl
+        deepagents_files/
+        response.md
         artifacts/
         summary.md
     memory/

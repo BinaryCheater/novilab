@@ -22,15 +22,16 @@ This table summarizes Novi's feature surface. It does not define final priority 
 | Tool registry/runtime | Core | Authorize, execute, and record capabilities | Tool specs, schema, execution, result normalization | local modules, MCP later | External tools cannot bypass it |
 | Policy/approval | Core | Control risk and side effects | Risk checks, approval gate, blocked state | CLI first, TUI/Web later | Start simple, avoid policy DSL early |
 | Artifact store | Core | Track outputs and evidence | Save/index artifacts, hash, metadata | filesystem, object storage later | Memory should reference artifacts |
-| Context pack | Core | Control and reproduce model context | Compile session/run/skill/memory/tool context | kernel adapters | Do not blindly append full history |
+| Context pack | Core | Control and reproduce model context | Compile session/run/skill/memory/tool context | kernel adapters | Stable system prompt, structured chat messages, and human archive are separate |
 | Agent participants | Core | Support different purposes, permissions, tools | Record role, scope, outputs, audit boundary | kernels, policy | Multi-agent-capable, not graph-first |
+| Model provider configuration | Early | Connect real API providers reproducibly | Project-local model profile, base URL, secret handling, provider mode | OpenAI-compatible chat completions, Responses later | `.novi/novi.yaml` first; env fallback allowed |
 | Project participants | Next | Support multiple human participants in one project | Identity, role, permission, ownership, audit attribution | local identity, GitHub/GitLab later, SSO later | Defer full team model; keep v0 actor fields future-compatible |
 | Cowork assignments | Next | Assign scoped work to a human participant or worker | Assignment, context scope, output, comments, review | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab later | Defer until after the local core loop |
 | Simple kernel | Early | Validate core loop without external agent framework | Deterministic execution/test harness | local code | Avoid early DeepAgents lock-in |
-| DeepAgents/LangGraph kernel | Next | Support complex research and long tasks | Kernel adapter, tool wrapping, event bridge | DeepAgents, LangGraph | Execution kernel, not state owner |
+| DeepAgents/LangGraph kernel | Early/Next | Support API-backed complex research and long tasks | Kernel adapter, tool wrapping, event bridge | DeepAgents, LangGraph | Optional Phase 1 prototype exists; next work is streaming/checkpoints/builtin tool mapping |
 | Research/search | Early | Retrieve sources and external information | Search, fetch, source artifacts | `search_stub` first; Tavily/Brave/SearXNG/httpx later | Provider replaceable |
 | Deep research | Early/Next | Multi-round search, reading, evidence table, report | Research run workflow, evidence artifacts | DeepAgents/LangGraph, search, browser, PDF parser | Hosted provider allowed only as adapter |
-| CLI control plane | Early | Inspect and control Novi | init/run/inspect/approve/review | Typer, Rich, prompt-toolkit | First control surface |
+| CLI control plane | Early | Inspect and control Novi | init/configure/ask/run/output/trace/inspect/approve/review | Typer, Rich, prompt-toolkit | First control surface; raw JSONL should not be required for normal use |
 | Memory review | Early/Next | Make long-term knowledge evidence-based | Candidates, review, commit boundary | Markdown/JSONL, SQLite, vector later | Internal design discussed separately |
 | Coding worker | Next | Let external coding agents produce patches/tests | Create coding run, limit scope, capture diffs/logs | Codex, Claude Code, OpenHands | Usually expressed through skills plus worker adapter |
 | Browser automation | Next | Handle dynamic pages, screenshots, logged-in pages | Browser tools, screenshots, HTML artifacts | Playwright, browser-use, Browser MCP | Network/login policy needed |
