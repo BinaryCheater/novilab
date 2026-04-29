@@ -2,7 +2,8 @@ import json
 import os
 from pathlib import Path
 
-from .store import append_jsonl, utc_now
+from .ids import new_id
+from .store import append_jsonl, content_hash, utc_now, write_yaml
 from .tools import execute_tool
 
 
@@ -90,6 +91,48 @@ def _extract_response_text(result):
     return str(result)
 
 
+def _file_content(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("content", value.get("data", value)))
+    return str(getattr(value, "content", value))
+
+
+def _export_deepagents_files(run_dir, run_record, result):
+    if not isinstance(result, dict) or not result.get("files"):
+        return []
+    exported = []
+    export_dir = Path(run_dir) / "deepagents_files"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    for raw_path, value in sorted(result["files"].items()):
+        relative = str(raw_path).lstrip("/") or "unnamed"
+        if ".." in Path(relative).parts:
+            relative = relative.replace("..", "__")
+        path = export_dir / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_file_content(value), encoding="utf-8")
+        artifact_id = new_id("art")
+        artifact = {
+            "id": artifact_id,
+            "type": "deepagents_file",
+            "path": str(path),
+            "run_id": run_record["id"],
+            "created_at": utc_now(),
+            "produced_by": run_record.get("participants", [{}])[0].get("agent_id"),
+            "hash": content_hash(path),
+            "hash_algorithm": "sha256",
+            "mime_type": "text/markdown",
+            "size_bytes": path.stat().st_size,
+            "source_path": str(raw_path),
+        }
+        write_yaml(Path(run_dir) / "artifacts" / f"{artifact_id}.yaml", artifact)
+        run_record.setdefault("artifact_ids", []).append(artifact_id)
+        exported.append({"artifact_id": artifact_id, "path": str(path.relative_to(run_dir))})
+    run_record["deepagents_files"] = exported
+    return exported
+
+
 def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
@@ -111,6 +154,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
         )
         result = agent.invoke({"messages": [{"role": "user", "content": run_record["objective"]}]})
         response_text = _extract_response_text(result)
+        exported_files = _export_deepagents_files(run_dir, run_record, result)
         response_path.write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
         append_jsonl(
             Path(run_dir) / "model_calls.jsonl",
@@ -124,6 +168,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
                 "completed_at": utc_now(),
                 "prompt_path": str(prompt_path),
                 "response_path": str(response_path),
+                "exported_files": exported_files,
             },
         )
     except Exception as exc:

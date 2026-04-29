@@ -38,6 +38,7 @@ If the selected agent has `model_profile: deterministic-local`, the DeepAgents a
 - Model call status is appended to `model_calls.jsonl`.
 - DeepAgents receives Novi-wrapped tools instead of unrestricted native tools.
 - Tool wrappers call `execute_tool()` and append records to `tool_calls.jsonl`.
+- DeepAgents returned virtual files are exported into `deepagents_files/`, indexed in `run.yaml`, and recorded as artifact metadata.
 
 ## Exposed Novi-Wrapped Tools
 

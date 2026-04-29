@@ -262,7 +262,10 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
                 "",
                 "    def invoke(self, payload):",
                 "        tool_result = self.tools[0](query='adapter smoke')",
-                "        return {'messages': [FakeMessage('deepagents response\\n' + tool_result)]}",
+                "        return {",
+                "            'messages': [FakeMessage('deepagents response\\n' + tool_result)],",
+                "            'files': {'/notes.md': {'content': 'deepagents working file'}}",
+                "        }",
                 "",
                 "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
                 "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
@@ -282,8 +285,11 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     response_text = (run_dir / "response.md").read_text()
     model_calls = (run_dir / "model_calls.jsonl").read_text()
     tool_calls = (run_dir / "tool_calls.jsonl").read_text()
+    exported_file = run_dir / "deepagents_files" / "notes.md"
 
     assert "deepagents response" in response_text
+    assert exported_file.read_text() == "deepagents working file"
+    assert "deepagents_files/notes.md" in (run_dir / "run.yaml").read_text()
     assert '"status": "success"' in model_calls
     assert '"kernel": "deepagents"' in model_calls
     assert '"tool_id": "search_stub.query"' in tool_calls
