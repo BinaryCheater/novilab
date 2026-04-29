@@ -6,6 +6,8 @@ The repository has started Phase 1 local-core implementation. The accepted worki
 
 ## Start Here
 
+For practical CLI usage, read `docs/usage.md`.
+
 Read the specs in this order:
 
 1. `docs/spec/README.md`
@@ -24,10 +26,14 @@ V0 should validate a local-first loop:
 
 ```text
 novi init
+novi configure model siliconflow --model "..."
 novi skill list
 novi session create
+novi ask "..."
 novi run start research "..."
 novi run inspect <run_id>
+novi run output latest
+novi run trace latest
 novi memory review
 ```
 
@@ -36,8 +42,8 @@ Core concepts are skills, sessions, runs, tools, memory, artifacts, policies, an
 ## Repository Notes
 
 - Treat `novi_lab_repo_bootstrap_summary.md` as background material.
-- Keep new specs under `docs/spec/` until project scope is confirmed.
-- Avoid implementation scaffolding until the specs are accepted or explicitly requested.
+- Keep accepted specs under `docs/spec/`; user-facing usage docs can live directly under `docs/`.
+- Implementation scaffolding is now allowed for approved Phase 1 work.
 - Use Superpowers skills for development work when available, especially planning, test-driven development, debugging, and verification-before-completion workflows.
 - Use `uv` to manage the Python environment and dependencies. Prefer commands such as `uv sync --extra dev` and `uv run pytest -v`.
 
