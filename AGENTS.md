@@ -28,6 +28,9 @@ This repository is moving from specification mode into Phase 1 planning.
 ## Project-Level Constraints
 
 - Actively use git to save progress at functional change points.
+- Use `uv` to manage the Python environment and dependencies; prefer `uv run` for project commands and tests.
+- Prefer creating a separate development branch for each focused task.
+- Do not push directly to GitHub remote `main`; changes intended for `main` must go through a pull request and be merged through GitHub.
 - Files under `docs/spec/` are frozen. Ask the user before editing, moving, deleting, or adding spec files.
 - Development process docs and implementation process notes belong under `docs/impl/`.
 
