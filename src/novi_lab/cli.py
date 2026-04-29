@@ -2,7 +2,14 @@ import argparse
 import sys
 from pathlib import Path
 
-from .agents import create_agent, list_agents, load_agent
+from .agents import (
+    add_agent_list_value,
+    create_agent,
+    list_agents,
+    load_agent,
+    remove_agent_list_value,
+    set_agent_model,
+)
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
@@ -19,7 +26,7 @@ from .store import (
     require_workspace,
     update_project_config,
 )
-from .tools import list_tools, load_tool
+from .tools import execute_tool, list_tools, load_tool
 
 
 def cmd_init(args):
@@ -70,6 +77,30 @@ def cmd_agent_create(args):
     return 0
 
 
+def cmd_agent_grant_tool(args):
+    agent = add_agent_list_value(Path.cwd(), args.agent_id, "tool_scope", args.tool_id)
+    print(f"Granted {args.tool_id} to {agent['id']}")
+    return 0
+
+
+def cmd_agent_revoke_tool(args):
+    agent = remove_agent_list_value(Path.cwd(), args.agent_id, "tool_scope", args.tool_id)
+    print(f"Revoked {args.tool_id} from {agent['id']}")
+    return 0
+
+
+def cmd_agent_add_skill(args):
+    agent = add_agent_list_value(Path.cwd(), args.agent_id, "skill_refs", args.skill_id)
+    print(f"Added skill {args.skill_id} to {agent['id']}")
+    return 0
+
+
+def cmd_agent_set_model(args):
+    agent = set_agent_model(Path.cwd(), args.agent_id, args.model_profile)
+    print(f"Set model profile for {agent['id']}: {agent['model_profile']}")
+    return 0
+
+
 def cmd_tool_list(args):
     require_workspace(Path.cwd())
     for tool in list_tools(Path.cwd()):
@@ -90,6 +121,32 @@ def cmd_tool_show(args):
     print("Output artifacts:")
     for artifact_type in tool.get("output_artifacts", []):
         print(f"- {artifact_type}")
+    return 0
+
+
+def _parse_arg_values(values):
+    parsed = {}
+    for value in values:
+        if "=" not in value:
+            raise RuntimeError(f"Tool args must use key=value: {value}")
+        key, raw = value.split("=", 1)
+        parsed[key] = raw
+    return parsed
+
+
+def cmd_tool_call(args):
+    agent = load_agent(Path.cwd(), args.agent_id)
+    participant = {
+        "agent_id": agent["id"],
+        "tool_scope": list(agent.get("tool_scope", [])),
+    }
+    call = execute_tool(Path.cwd(), "manual", participant, args.tool_id, _parse_arg_values(args.arg))
+    print(f"{call['tool_id']} {call['status']} {call.get('block_reason') or call.get('risk', '-')}")
+    if call.get("result_ref"):
+        for key, value in call["result_ref"].items():
+            print(f"{key}: {value}")
+    if call.get("error"):
+        print(f"error: {call['error']}")
     return 0
 
 
@@ -232,6 +289,22 @@ def build_parser():
     agent_create.add_argument("agent_id")
     agent_create.add_argument("--role", required=True)
     agent_create.set_defaults(func=cmd_agent_create)
+    agent_grant_tool = agent_sub.add_parser("grant-tool")
+    agent_grant_tool.add_argument("agent_id")
+    agent_grant_tool.add_argument("tool_id")
+    agent_grant_tool.set_defaults(func=cmd_agent_grant_tool)
+    agent_revoke_tool = agent_sub.add_parser("revoke-tool")
+    agent_revoke_tool.add_argument("agent_id")
+    agent_revoke_tool.add_argument("tool_id")
+    agent_revoke_tool.set_defaults(func=cmd_agent_revoke_tool)
+    agent_add_skill = agent_sub.add_parser("add-skill")
+    agent_add_skill.add_argument("agent_id")
+    agent_add_skill.add_argument("skill_id")
+    agent_add_skill.set_defaults(func=cmd_agent_add_skill)
+    agent_set_model = agent_sub.add_parser("set-model")
+    agent_set_model.add_argument("agent_id")
+    agent_set_model.add_argument("model_profile")
+    agent_set_model.set_defaults(func=cmd_agent_set_model)
 
     tool_parser = subparsers.add_parser("tool")
     tool_sub = tool_parser.add_subparsers(dest="tool_command", required=True)
@@ -240,6 +313,11 @@ def build_parser():
     tool_show = tool_sub.add_parser("show")
     tool_show.add_argument("tool_id")
     tool_show.set_defaults(func=cmd_tool_show)
+    tool_call = tool_sub.add_parser("call")
+    tool_call.add_argument("tool_id")
+    tool_call.add_argument("--agent", dest="agent_id", required=True)
+    tool_call.add_argument("--arg", action="append", default=[])
+    tool_call.set_defaults(func=cmd_tool_call)
 
     session_parser = subparsers.add_parser("session")
     session_sub = session_parser.add_subparsers(dest="session_command", required=True)

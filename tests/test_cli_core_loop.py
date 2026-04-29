@@ -75,6 +75,25 @@ def test_agent_create_list_and_show(tmp_path):
     assert "Tool scope:" in show_result.stdout
 
 
+def test_agent_configuration_commands_update_scope_and_model(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
+
+    grant_result = run_cli(tmp_path, "agent", "grant-tool", "agent_reader", "filesystem.read")
+    skill_result = run_cli(tmp_path, "agent", "add-skill", "agent_reader", "research.review")
+    model_result = run_cli(tmp_path, "agent", "set-model", "agent_reader", "openai:gpt-4.1-mini")
+    revoke_result = run_cli(tmp_path, "agent", "revoke-tool", "agent_reader", "filesystem.read")
+    show_result = run_cli(tmp_path, "agent", "show", "agent_reader")
+
+    assert grant_result.returncode == 0, grant_result.stderr
+    assert skill_result.returncode == 0, skill_result.stderr
+    assert model_result.returncode == 0, model_result.stderr
+    assert revoke_result.returncode == 0, revoke_result.stderr
+    assert "Model profile: openai:gpt-4.1-mini" in show_result.stdout
+    assert "research.review" in show_result.stdout
+    assert "filesystem.read" not in show_result.stdout
+
+
 def test_tool_list_and_show_builtin_tool(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -88,6 +107,41 @@ def test_tool_list_and_show_builtin_tool(tmp_path):
     assert "Tool: search_stub.query" in show_result.stdout
     assert "Risk: read_only" in show_result.stdout
     assert "Policy: allowed" in show_result.stdout
+
+
+def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
+    run_cli(tmp_path, "init")
+    (tmp_path / "note.md").write_text("local evidence", encoding="utf-8")
+    run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
+
+    blocked = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.read",
+        "--agent",
+        "agent_reader",
+        "--arg",
+        "path=note.md",
+    )
+    run_cli(tmp_path, "agent", "grant-tool", "agent_reader", "filesystem.read")
+    allowed = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.read",
+        "--agent",
+        "agent_reader",
+        "--arg",
+        "path=note.md",
+    )
+
+    assert blocked.returncode == 0, blocked.stderr
+    assert "blocked" in blocked.stdout
+    assert "tool_not_in_agent_scope" in blocked.stdout
+    assert allowed.returncode == 0, allowed.stderr
+    assert "success" in allowed.stdout
+    assert "local evidence" in allowed.stdout
 
 
 def test_session_create_writes_session_records(tmp_path):

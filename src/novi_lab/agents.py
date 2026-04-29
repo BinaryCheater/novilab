@@ -84,6 +84,34 @@ def create_agent(root, agent_id, role):
     return record
 
 
+def _save_agent(root, agent):
+    base = require_workspace(root)
+    agent["updated_at"] = utc_now()
+    write_yaml(_agent_path(base, agent["id"]), agent)
+    return agent
+
+
+def add_agent_list_value(root, agent_id, field, value):
+    agent = load_agent(root, agent_id)
+    values = list(agent.get(field, []))
+    if value not in values:
+        values.append(value)
+    agent[field] = values
+    return _save_agent(root, agent)
+
+
+def remove_agent_list_value(root, agent_id, field, value):
+    agent = load_agent(root, agent_id)
+    agent[field] = [item for item in agent.get(field, []) if item != value]
+    return _save_agent(root, agent)
+
+
+def set_agent_model(root, agent_id, model_profile):
+    agent = load_agent(root, agent_id)
+    agent["model_profile"] = model_profile
+    return _save_agent(root, agent)
+
+
 def agent_snapshot(agent, joined_at):
     return {
         "agent_id": agent["id"],

@@ -1,3 +1,6 @@
+import subprocess
+from pathlib import Path
+
 from .ids import new_id
 from .store import read_yaml, require_workspace, utc_now
 
@@ -11,6 +14,22 @@ def builtin_tools():
             "policy": "allowed",
             "input_schema": {"query": "string"},
             "output_artifacts": ["search_result_stub"],
+        },
+        {
+            "id": "filesystem.read",
+            "description": "Read a UTF-8 text file inside the Novi workspace.",
+            "risk": "read_only",
+            "policy": "allowed",
+            "input_schema": {"path": "string"},
+            "output_artifacts": ["file_text"],
+        },
+        {
+            "id": "git.status",
+            "description": "Read git status for the Novi workspace.",
+            "risk": "read_only",
+            "policy": "allowed",
+            "input_schema": {},
+            "output_artifacts": ["git_status"],
         }
     ]
 
@@ -79,6 +98,46 @@ def execute_tool(root, run_id, agent, tool_id, args):
             "source": "deterministic_stub",
             "summary": f"No network search was performed for: {args.get('query', '')}",
         }
+        call["updated_at"] = utc_now()
+        return call
+
+    if tool_id == "filesystem.read":
+        workspace = Path(root).resolve()
+        requested = (workspace / args.get("path", "")).resolve()
+        if not str(requested).startswith(str(workspace)):
+            call["status"] = "blocked"
+            call["policy_result"] = "blocked"
+            call["block_reason"] = "path_outside_workspace"
+            call["updated_at"] = utc_now()
+            return call
+        if not requested.is_file():
+            call["status"] = "error"
+            call["policy_result"] = "allowed"
+            call["error"] = f"File not found: {args.get('path', '')}"
+            call["updated_at"] = utc_now()
+            return call
+        content = requested.read_text(encoding="utf-8")
+        call["status"] = "success"
+        call["policy_result"] = "allowed"
+        call["result_ref"] = {
+            "path": str(requested.relative_to(workspace)),
+            "content": content[:4000],
+            "truncated": len(content) > 4000,
+        }
+        call["updated_at"] = utc_now()
+        return call
+
+    if tool_id == "git.status":
+        result = subprocess.run(
+            ["git", "status", "--short", "--branch"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+        call["policy_result"] = "allowed"
+        call["status"] = "success" if result.returncode == 0 else "error"
+        call["result_ref"] = {"stdout": result.stdout, "stderr": result.stderr}
         call["updated_at"] = utc_now()
         return call
 
