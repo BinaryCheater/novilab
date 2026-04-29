@@ -54,6 +54,32 @@ def read_jsonl(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
+def append_session_message(root, session_id, role, content, run_id=None):
+    session = load_session(root, session_id)
+    if not session:
+        raise RuntimeError(f"Session not found: {session_id}")
+    message = {
+        "id": new_id("msg"),
+        "session_id": session_id,
+        "run_id": run_id,
+        "role": role,
+        "content": content,
+        "created_at": utc_now(),
+    }
+    append_jsonl(session["message_log_path"], message)
+    return message
+
+
+def session_messages(root, session_id, limit=None):
+    session = load_session(root, session_id)
+    if not session:
+        raise RuntimeError(f"Session not found: {session_id}")
+    messages = read_jsonl(session["message_log_path"])
+    if limit is None:
+        return messages
+    return messages[-limit:]
+
+
 def content_hash(path):
     digest = sha256()
     with Path(path).open("rb") as handle:

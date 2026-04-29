@@ -15,6 +15,7 @@ from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
     active_session,
+    append_session_message,
     create_session,
     decide_memory_candidate,
     init_workspace,
@@ -224,6 +225,21 @@ def cmd_run_start(args):
     return 0
 
 
+def cmd_ask(args):
+    session = active_session(Path.cwd())
+    append_session_message(Path.cwd(), session["id"], "user", args.message)
+    agents = [load_agent(Path.cwd(), agent_id) for agent_id in args.agent]
+    run = start_deterministic_run(Path.cwd(), session, args.type, args.message, agents, kernel=args.kernel)
+    body = _response_body(require_workspace(Path.cwd()) / "runs" / run["id"])
+    append_session_message(Path.cwd(), session["id"], "assistant", body, run_id=run["id"])
+    print(f"Run: {run['id']}")
+    if body:
+        print("")
+        print("Response:")
+        print(body)
+    return 0
+
+
 def cmd_run_list(args):
     session = active_session(Path.cwd())
     for run_id in session.get("run_ids", []):
@@ -368,6 +384,13 @@ def build_parser():
 
     status_parser = subparsers.add_parser("status")
     status_parser.set_defaults(func=cmd_status)
+
+    ask_parser = subparsers.add_parser("ask")
+    ask_parser.add_argument("message")
+    ask_parser.add_argument("--type", choices=["research", "analysis", "audit"], default="research")
+    ask_parser.add_argument("--agent", action="append", default=[])
+    ask_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    ask_parser.set_defaults(func=cmd_ask)
 
     skill_parser = subparsers.add_parser("skill")
     skill_sub = skill_parser.add_subparsers(dest="skill_command", required=True)

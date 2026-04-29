@@ -1,8 +1,9 @@
+import json
 from hashlib import sha256
 from pathlib import Path
 
 from .skills import discover_skills
-from .store import append_jsonl
+from .store import append_jsonl, session_messages
 from .tools import list_tools
 
 
@@ -102,12 +103,24 @@ def build_prompt_parts(root, run_record, context_pack):
             ]
         )
 
+    recent_messages = "\n".join(
+        json.dumps(
+            {
+                "role": message.get("role"),
+                "content": message.get("content"),
+                "run_id": message.get("run_id"),
+            },
+            sort_keys=True,
+        )
+        for message in session_messages(root, run_record["session_id"], limit=12)
+    )
     current_task = "\n".join(["# Current Task", "", run_record["objective"], ""])
     return [
         ("00-system.md", system),
         ("20-agent.md", run_context.strip() + "\n"),
         ("30-skills.md", "\n".join(skill_lines).strip() + "\n"),
         ("40-tools.md", "\n".join(tool_lines).strip() + "\n"),
+        ("70-recent-messages.jsonl", recent_messages + ("\n" if recent_messages else "")),
         ("80-current-task.md", current_task),
     ]
 

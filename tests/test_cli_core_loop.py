@@ -329,6 +329,51 @@ def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
     assert "secret-test-key" not in result.stdout
 
 
+def test_ask_records_messages_and_includes_recent_context(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.system_prompt = system_prompt",
+                "",
+                "    def invoke(self, payload):",
+                "        user = payload['messages'][-1]['content']",
+                "        marker = 'first question' in self.system_prompt",
+                "        return {'messages': [FakeMessage(f'answer to {user}; saw_first={marker}')]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    session_result = run_cli(tmp_path, "session", "create", "ask session")
+    session_id = parse_id(session_result.stdout, "sess_")
+
+    first = run_cli(tmp_path, "ask", "first question", "--kernel", "deepagents")
+    second = run_cli(tmp_path, "ask", "second question", "--kernel", "deepagents")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "answer to second question; saw_first=True" in second.stdout
+    messages_text = (tmp_path / ".novi" / "sessions" / session_id / "messages.jsonl").read_text()
+    assert '"role": "user"' in messages_text
+    assert '"content": "first question"' in messages_text
+    assert '"role": "assistant"' in messages_text
+    assert "answer to first question" in messages_text
+    latest_run = sorted((tmp_path / ".novi" / "runs").glob("run_*"))[-1]
+    recent_messages = latest_run / "prompt_parts" / "70-recent-messages.jsonl"
+    assert recent_messages.exists()
+    assert "first question" in recent_messages.read_text()
+
+
 def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, monkeypatch):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(
