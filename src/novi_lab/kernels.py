@@ -194,7 +194,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     prompt_text = Path(prompt_path).read_text(encoding="utf-8")
     started_at = utc_now()
     response_path = Path(run_dir) / "response.md"
-    model, model_record = resolve_deepagents_model(participant)
+    model, model_record = resolve_deepagents_model(root, participant)
     try:
         agent = create_deep_agent(
             model=model,

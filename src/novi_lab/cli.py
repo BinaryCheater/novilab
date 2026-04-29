@@ -363,11 +363,49 @@ def cmd_status(args):
     return 0
 
 
+def _configured_model_from_args(args):
+    if args.provider == "siliconflow":
+        return {
+            "provider": "openai_chat",
+            "model": args.model,
+            "base_url": args.base_url or "https://api.siliconflow.cn/v1",
+            "api_key": args.api_key,
+        }
+    if args.provider == "openai-chat":
+        if not args.base_url:
+            raise RuntimeError("openai-chat provider requires --base-url.")
+        return {
+            "provider": "openai_chat",
+            "model": args.model,
+            "base_url": args.base_url,
+            "api_key": args.api_key,
+        }
+    if args.provider == "openai-responses":
+        return {
+            "provider": "openai_responses",
+            "model": args.model,
+            "base_url": args.base_url,
+            "api_key": args.api_key,
+        }
+    raise RuntimeError(f"Unknown model provider: {args.provider}")
+
+
+def cmd_configure_model(args):
+    model_config = _configured_model_from_args(args)
+    update_project_config(Path.cwd(), model=model_config)
+    print(f"Configured model provider: {model_config['provider']}")
+    print(f"Model: {model_config['model']}")
+    print(f"Base URL: {model_config.get('base_url') or '-'}")
+    print(f"API key: {'set' if model_config.get('api_key') else 'unset'}")
+    return 0
+
+
 def cmd_doctor_model(args):
-    provider = os.environ.get("NOVI_MODEL_PROVIDER", "deepagents_default")
-    model = os.environ.get("NOVI_MODEL", "openai:gpt-4.1-mini")
-    base_url = os.environ.get("NOVI_API_BASE") or os.environ.get("OPENAI_API_BASE") or "-"
-    api_key = os.environ.get("NOVI_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    config = project_config(Path.cwd()).get("model", {}) or {}
+    provider = config.get("provider") or os.environ.get("NOVI_MODEL_PROVIDER", "deepagents_default")
+    model = config.get("model") or os.environ.get("NOVI_MODEL", "openai:gpt-4.1-mini")
+    base_url = config.get("base_url") or os.environ.get("NOVI_API_BASE") or os.environ.get("OPENAI_API_BASE") or "-"
+    api_key = config.get("api_key") or os.environ.get("NOVI_API_KEY") or os.environ.get("OPENAI_API_KEY")
     print(f"Provider: {provider}")
     print(f"Model: {model}")
     print(f"Base URL: {base_url}")
@@ -384,6 +422,15 @@ def build_parser():
 
     status_parser = subparsers.add_parser("status")
     status_parser.set_defaults(func=cmd_status)
+
+    configure_parser = subparsers.add_parser("configure")
+    configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
+    configure_model = configure_sub.add_parser("model")
+    configure_model.add_argument("provider", choices=["siliconflow", "openai-chat", "openai-responses"])
+    configure_model.add_argument("--model", required=True)
+    configure_model.add_argument("--api-key")
+    configure_model.add_argument("--base-url")
+    configure_model.set_defaults(func=cmd_configure_model)
 
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("message")

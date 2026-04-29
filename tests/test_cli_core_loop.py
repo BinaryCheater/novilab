@@ -220,7 +220,8 @@ def test_run_writes_prompt_pack_and_human_readable_timeline(tmp_path):
     assert "Context Management" in prompt_text
     assert "prompt.md" in request_text
     assert "prompt_parts/00-system.md" in request_text
-    assert "model_profile: deterministic-local" in request_text
+    assert "agent_model_profile: deterministic-local" in request_text
+    assert "model_provider: deepagents_default" in request_text
     assert "sha256" in manifest_text
     assert "No model executor connected" in response_text
     assert '"status": "not_connected"' in model_calls_text
@@ -340,6 +341,37 @@ def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
     assert "Base URL: https://api.siliconflow.cn/v1" in result.stdout
     assert "API key: set" in result.stdout
     assert "secret-test-key" not in result.stdout
+
+
+def test_configure_model_writes_project_config_without_printing_secret(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "siliconflow",
+        "--model",
+        "Pro/zai-org/GLM-4.7",
+        "--api-key",
+        "secret-config-key",
+    )
+    doctor = run_cli(tmp_path, "doctor", "model")
+    config_text = (tmp_path / ".novi" / "novi.yaml").read_text()
+
+    assert result.returncode == 0, result.stderr
+    assert "Configured model provider: openai_chat" in result.stdout
+    assert "secret-config-key" not in result.stdout
+    assert "provider: openai_chat" in config_text
+    assert "model: Pro/zai-org/GLM-4.7" in config_text
+    assert "base_url: https://api.siliconflow.cn/v1" in config_text
+    assert "api_key: secret-config-key" in config_text
+    assert doctor.returncode == 0, doctor.stderr
+    assert "Provider: openai_chat" in doctor.stdout
+    assert "Model: Pro/zai-org/GLM-4.7" in doctor.stdout
+    assert "Base URL: https://api.siliconflow.cn/v1" in doctor.stdout
+    assert "API key: set" in doctor.stdout
+    assert "secret-config-key" not in doctor.stdout
 
 
 def test_ask_records_messages_and_includes_recent_context(tmp_path):
@@ -463,6 +495,80 @@ def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, mo
     assert "base_url=https://api.siliconflow.com/v1" in response_text
     assert "responses=False" in response_text
     assert '"model_provider": "openai_chat"' in model_calls
+
+
+def test_deepagents_kernel_uses_project_model_config_without_env(tmp_path, monkeypatch):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    for name in ["NOVI_MODEL_PROVIDER", "NOVI_MODEL", "NOVI_API_BASE", "NOVI_API_KEY", "OPENAI_API_BASE", "OPENAI_API_KEY"]:
+        monkeypatch.delenv(name, raising=False)
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "siliconflow",
+        "--model",
+        "Pro/zai-org/GLM-4.7",
+        "--api-key",
+        "secret-config-key",
+    )
+    run_cli(tmp_path, "session", "create", "project config model run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke configured model", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+
+    assert "model=Pro/zai-org/GLM-4.7" in response_text
+    assert "base_url=https://api.siliconflow.cn/v1" in response_text
+    assert "responses=False" in response_text
+    assert '"model_provider": "openai_chat"' in model_calls
+    assert '"model_base_url": "https://api.siliconflow.cn/v1"' in model_calls
+    assert "model_provider: openai_chat" in request_text
+    assert "model_base_url: https://api.siliconflow.cn/v1" in request_text
+    assert "secret-config-key" not in request_text
 
 
 def test_memory_candidate_has_markdown_companion(tmp_path):

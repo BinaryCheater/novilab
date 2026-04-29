@@ -3,6 +3,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from .skills import discover_skills
+from .model_providers import configured_model_record
 from .store import append_jsonl, session_messages
 from .tools import list_tools
 
@@ -157,15 +158,19 @@ def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
         "# Model Response\n\nNo model executor connected. This run was produced by the simple kernel.\n",
         encoding="utf-8",
     )
+    model_record = configured_model_record(root, run_record.get("participants", [{}])[0])
     request = {
         "run_id": run_record["id"],
         "agent_id": run_record.get("participants", [{}])[0].get("agent_id"),
-        "model_profile": run_record.get("participants", [{}])[0].get("model_profile", context_pack.get("model_profile")),
+        "agent_model_profile": run_record.get("participants", [{}])[0].get("model_profile", context_pack.get("model_profile")),
+        "model_profile": model_record["model_profile"],
+        "model_provider": model_record["model_provider"],
+        "model_base_url": model_record["model_base_url"],
         "kernel": kernel,
         "prompt_path": str(prompt_path),
         "prompt_parts": part_records,
         "response_path": str(response_path),
-        "executor": "not_connected",
+        "executor": kernel,
     }
     from .store import write_yaml
 
@@ -177,6 +182,8 @@ def write_prompt_pack(root, run_dir, run_record, context_pack, kernel="simple"):
             "run_id": run_record["id"],
             "agent_id": request["agent_id"],
             "model_profile": request["model_profile"],
+            "model_provider": request["model_provider"],
+            "model_base_url": request["model_base_url"],
             "kernel": kernel,
             "status": "not_connected",
             "prompt_path": str(prompt_path),

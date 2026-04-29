@@ -1,5 +1,7 @@
 import os
 
+from .store import project_config
+
 
 def _env(name, fallback=None):
     value = os.environ.get(name)
@@ -8,10 +10,15 @@ def _env(name, fallback=None):
     return fallback
 
 
-def model_profile_from_participant(participant):
+def _project_model_config(root):
+    return project_config(root).get("model", {}) or {}
+
+
+def model_profile_from_participant(root, participant):
+    config = _project_model_config(root)
     model_profile = participant.get("model_profile") or "openai:gpt-4.1-mini"
     if model_profile == "deterministic-local":
-        return _env("NOVI_MODEL", "openai:gpt-4.1-mini")
+        return config.get("model") or _env("NOVI_MODEL", "openai:gpt-4.1-mini")
     return model_profile
 
 
@@ -21,16 +28,30 @@ def _strip_openai_provider(model_profile):
     return model_profile
 
 
-def resolve_deepagents_model(participant):
-    provider = _env("NOVI_MODEL_PROVIDER", "deepagents_default")
-    model_profile = model_profile_from_participant(participant)
+def configured_model_record(root, participant):
+    config = _project_model_config(root)
+    provider = config.get("provider") or _env("NOVI_MODEL_PROVIDER", "deepagents_default")
+    model_profile = model_profile_from_participant(root, participant)
+    if provider in {"openai_chat", "openai_compatible_chat", "siliconflow"}:
+        return {
+            "model_provider": "openai_chat",
+            "model_profile": _strip_openai_provider(model_profile),
+            "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE")),
+        }
+    return {
+        "model_provider": provider,
+        "model_profile": model_profile,
+        "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE")),
+    }
+
+
+def resolve_deepagents_model(root, participant):
+    config = _project_model_config(root)
+    provider = config.get("provider") or _env("NOVI_MODEL_PROVIDER", "deepagents_default")
+    model_profile = model_profile_from_participant(root, participant)
 
     if provider in {"deepagents_default", "openai_responses"}:
-        return model_profile, {
-            "model_provider": provider,
-            "model_profile": model_profile,
-            "model_base_url": None,
-        }
+        return model_profile, configured_model_record(root, participant)
 
     if provider in {"openai_chat", "openai_compatible_chat", "siliconflow"}:
         try:
@@ -42,8 +63,8 @@ def resolve_deepagents_model(participant):
             ) from exc
 
         model_name = _strip_openai_provider(model_profile)
-        base_url = _env("NOVI_API_BASE", _env("OPENAI_API_BASE"))
-        api_key = _env("NOVI_API_KEY", _env("OPENAI_API_KEY"))
+        base_url = config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE"))
+        api_key = config.get("api_key") or _env("NOVI_API_KEY", _env("OPENAI_API_KEY"))
         if not base_url:
             raise RuntimeError("OpenAI-compatible chat provider requires NOVI_API_BASE or OPENAI_API_BASE.")
         if not api_key:
@@ -53,10 +74,6 @@ def resolve_deepagents_model(participant):
             api_key=api_key,
             base_url=base_url,
             use_responses_api=False,
-        ), {
-            "model_provider": "openai_chat",
-            "model_profile": model_name,
-            "model_base_url": base_url,
-        }
+        ), configured_model_record(root, participant)
 
     raise RuntimeError(f"Unknown model provider: {provider}")
