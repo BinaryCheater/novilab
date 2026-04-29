@@ -173,6 +173,52 @@ def test_run_start_creates_auditable_deterministic_records(tmp_path):
     assert list((run_dir / "artifacts").glob("*.md"))
 
 
+def test_run_writes_prompt_pack_and_human_readable_timeline(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "prompt run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "summarize context handling")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    prompt_text = (run_dir / "prompt.md").read_text()
+    timeline_text = (run_dir / "timeline.md").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+    prompt_result = run_cli(tmp_path, "run", "prompt", run_id)
+
+    assert "Novi Lab System Prompt" in prompt_text
+    assert "Agent: agent_orchestrator" in prompt_text
+    assert "Skill: research.review" in prompt_text
+    assert "Tool: search_stub.query" in prompt_text
+    assert "Context Management" in prompt_text
+    assert "prompt.md" in request_text
+    assert "model_profile: deterministic-local" in request_text
+    assert "RunCreated" in timeline_text
+    assert "ToolExecuted" in timeline_text
+    assert prompt_result.returncode == 0, prompt_result.stderr
+    assert "Novi Lab System Prompt" in prompt_result.stdout
+
+
+def test_memory_candidate_has_markdown_companion(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "memory markdown run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "record readable memory")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    candidate_id = parse_id(run_cli(tmp_path, "memory", "review").stdout, "memcand_")
+    candidate_md = tmp_path / ".novi" / "memory" / "candidates" / f"{candidate_id}.md"
+
+    assert candidate_md.exists()
+    candidate_text = candidate_md.read_text()
+    assert "# Memory Candidate" in candidate_text
+    assert candidate_id in candidate_text
+    assert run_id in candidate_text
+    assert "Evidence" in candidate_text
+
+
 def test_run_start_with_selected_agents_records_sequential_steps(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "agent", "create", "agent_researcher", "--role", "researcher")

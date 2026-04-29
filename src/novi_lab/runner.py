@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .agents import agent_snapshot, load_agent
 from .ids import new_id
+from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
     content_hash,
@@ -26,6 +27,44 @@ def _event(run_id, event_type, session_id=None, agent_id=None, summary="", paylo
         "summary": summary,
         "payload": payload or {},
     }
+
+
+def _write_timeline(run_dir):
+    import json
+
+    events_path = Path(run_dir) / "events.jsonl"
+    lines = ["# Run Timeline", ""]
+    if events_path.exists():
+        for raw in events_path.read_text(encoding="utf-8").splitlines():
+            if not raw:
+                continue
+            event = json.loads(raw)
+            lines.append(f"- {event['created_at']} `{event['type']}` {event.get('summary', '')}")
+    (Path(run_dir) / "timeline.md").write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
+
+
+def _write_memory_candidate_markdown(root, memory):
+    path = Path(root) / ".novi" / "memory" / "candidates" / f"{memory['id']}.md"
+    lines = [
+        "# Memory Candidate",
+        "",
+        f"- ID: {memory['id']}",
+        f"- Status: {memory['status']}",
+        f"- Type: {memory['type']}",
+        f"- Subject: {memory['subject']}",
+        f"- Confidence: {memory['confidence']}",
+        f"- Proposed by: {memory['proposed_by']}",
+        "",
+        "## Claim",
+        "",
+        memory["claim"],
+        "",
+        "## Evidence",
+        "",
+    ]
+    for evidence in memory.get("evidence", []):
+        lines.append(f"- Run: {evidence.get('run_id')} Artifact: {evidence.get('artifact_id')}")
+    path.write_text("\n".join(lines).strip() + "\n", encoding="utf-8")
 
 
 def _selected_agents(root, agents):
@@ -82,6 +121,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))
+    write_prompt_pack(root, run_dir, run_record, context)
 
     for index, participant in enumerate(participants, start=1):
         step_artifact_id = new_id("art")
@@ -192,6 +232,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
     }
     candidate_path = Path(root) / ".novi" / "memory" / "candidates" / f"{memory_id}.yaml"
     write_yaml(candidate_path, memory)
+    _write_memory_candidate_markdown(root, memory)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "MemoryCandidateProposed", session["id"], auditor, "Memory candidate proposed.", {"memory_candidate_id": memory_id}))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "AuditorReviewed", session["id"], auditor, "Auditor checked deterministic records."))
 
@@ -209,6 +250,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None):
     (run_dir / "summary.md").write_text(summary, encoding="utf-8")
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunSummarized", session["id"], orchestrator, "Run summary written."))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCompleted", session["id"], orchestrator, "Run completed."))
+    _write_timeline(run_dir)
 
     run_record["status"] = "completed"
     run_record["updated_at"] = utc_now()

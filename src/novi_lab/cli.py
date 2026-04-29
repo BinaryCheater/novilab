@@ -234,6 +234,18 @@ def cmd_run_inspect(args):
     return 0
 
 
+def cmd_run_prompt(args):
+    base = require_workspace(Path.cwd())
+    run = load_run(Path.cwd(), args.run_id)
+    if not run:
+        raise RuntimeError(f"Run not found: {args.run_id}")
+    prompt_path = base / "runs" / args.run_id / "prompt.md"
+    if not prompt_path.exists():
+        raise RuntimeError(f"Prompt pack not found for run: {args.run_id}")
+    print(prompt_path.read_text(encoding="utf-8").strip())
+    return 0
+
+
 def cmd_memory_review(args):
     candidates = [candidate for candidate in memory_candidates(Path.cwd()) if candidate.get("status") == "proposed"]
     if not candidates:
@@ -345,6 +357,9 @@ def build_parser():
     run_inspect = run_sub.add_parser("inspect")
     run_inspect.add_argument("run_id")
     run_inspect.set_defaults(func=cmd_run_inspect)
+    run_prompt = run_sub.add_parser("prompt")
+    run_prompt.add_argument("run_id")
+    run_prompt.set_defaults(func=cmd_run_prompt)
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)
