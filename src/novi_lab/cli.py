@@ -82,10 +82,15 @@ def cmd_agent_show(args):
     print(f"Agent: {agent['id']}")
     print(f"Role: {agent['role']}")
     print(f"Description: {agent.get('description', '')}")
+    print(f"Authority level: {agent.get('authority_level', 'executor')}")
     print(f"Model profile: {agent.get('model_profile', '-')}")
+    print(f"Interface mode: {agent.get('interface_mode', 'headless')}")
     print("Skill refs:")
     for skill_ref in agent.get("skill_refs", []):
         print(f"- {skill_ref}")
+    print("Prompt refs:")
+    for prompt_ref in agent.get("prompt_refs", []):
+        print(f"- {prompt_ref}")
     print("Tool scope:")
     for tool_id in agent.get("tool_scope", []):
         print(f"- {tool_id}")
@@ -95,6 +100,9 @@ def cmd_agent_show(args):
     print("Permission scope:")
     for scope in agent.get("permission_scope", []):
         print(f"- {scope}")
+    print("Kernel binding hints:")
+    for kernel, hints in agent.get("kernel_binding_hints", {}).items():
+        print(f"- {kernel}: {hints.get('binding', '-')}")
     return 0
 
 
@@ -148,6 +156,9 @@ def cmd_tool_show(args):
     print("Output artifacts:")
     for artifact_type in tool.get("output_artifacts", []):
         print(f"- {artifact_type}")
+    print("Expose to:")
+    for agent_id in tool.get("expose_to", []):
+        print(f"- {agent_id}")
     return 0
 
 
@@ -264,6 +275,9 @@ def cmd_run_inspect(args):
     print("Context packs:")
     for context_id in run.get("context_pack_ids", []):
         print(f"- {context_id}")
+    print("Kernel bindings:")
+    for binding in read_jsonl(run_dir / "kernel_bindings.jsonl"):
+        print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
     print("Tool calls:")
     for call in tool_calls:
         detail = call.get("block_reason") if call.get("status") == "blocked" else call.get("risk", "-")
@@ -331,6 +345,12 @@ def cmd_run_trace(args):
         print("- none")
     for call in tool_calls:
         print(f"- {call.get('tool_id')} {call.get('status')} {call.get('source', '-')}")
+    print("Kernel bindings:")
+    bindings = read_jsonl(run_dir / "kernel_bindings.jsonl")
+    if not bindings:
+        print("- none")
+    for binding in bindings:
+        print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
     return 0
 
 

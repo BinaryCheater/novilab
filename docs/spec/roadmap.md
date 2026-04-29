@@ -112,11 +112,11 @@ Defer:
 - [ ] No complex permission matrix.
 - [ ] No full cowork/project participant system.
 
-## Phase 1.5: Integrated Exploration Track
+## Phase 1.5: Usable Integrated Research Loop
 
-Goal: explore configurable agents, workflow iteration, collaboration, and scientific memory together without turning Novi into an unbounded platform build.
+Goal: move from a usable run ledger to a smoother research control loop where agent profiles, workflow patches, layered knowledge/memory, contribution review, and session memory work together without turning Novi into a heavy platform.
 
-This track is intentionally broader than a single knowledge-import slice. The hypothesis is that these four foundations shape each other and should be validated together, while each remains shallow, local-first, and inspectable.
+This track is intentionally broader than a single knowledge-import slice. The hypothesis is that agent authority, workflow iteration, collaboration, and memory shape each other and should be validated together, while each remains shallow, local-first, and inspectable.
 
 Entry check:
 
@@ -127,32 +127,37 @@ Entry check:
 
 Build check:
 
-- [ ] Agent profile records can express prompt refs, tool scope, permission scope, model profile, interface mode, and output schema.
-- [ ] A Novi agent profile can compile into the selected execution kernel, including a DeepAgents main agent or subagent binding when appropriate.
+- [ ] Agent profile records can express authority level, prompt refs, tool scope, permission scope, model profile, interface mode, output schema, and kernel binding hints.
+- [ ] Runs can distinguish user-level/collaborator agents, reviewer/auditor agents, and executor agents in participant snapshots.
+- [ ] A Novi agent profile can compile into the selected execution kernel, including DeepAgents subagent specs, tool wrappers, interrupt policy, and backend route permissions where applicable.
+- [ ] Tool routing can express allowlist/expose_to semantics while still requiring each external tool to be represented as a Novi ToolSpec with risk, policy, and artifact behavior.
+- [ ] A layered Markdown knowledge vault can be referenced or initialized, with raw inputs/excerpts, analysis notes, accepted conclusions, indexes, and syntheses treated as distinct layers.
+- [ ] Agent/session mid-term memory can be stored as file-backed execution memory without becoming accepted project knowledge.
 - [ ] A generated workflow can be saved as a `WorkflowSpec`-like record with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers.
-- [ ] Agent-generated workflow changes are saved as patches or proposed revisions, not silent edits.
-- [ ] A user can import project knowledge, notes, paper snippets, or prior experiment logs as artifacts and contributions.
-- [ ] Imported knowledge can be processed by an agent into claim candidates, memory candidates, workflow patches, or skill/process suggestions.
-- [ ] A user or reviewer can accept, reject, or request changes on at least one contribution or memory/workflow candidate.
-- [ ] Direct DeepAgents-style work can be imported back into Novi as artifacts/contributions rather than becoming accepted project state automatically.
-- [ ] Accepted memory or workflow revisions can be included in a later context pack.
-- [ ] `novi run inspect` or an equivalent CLI trace can explain the full path from import/guidance to run, artifacts, candidates, review decision, and next-run context.
+- [ ] Agent-generated workflow, prompt, skill, or memory changes are saved as patches or contributions, not silent edits.
+- [ ] A user can import project knowledge, notes, paper snippets, prior experiment logs, links, or direct agent-session exports as artifacts and contributions.
+- [ ] Imported knowledge can be processed into claim candidates, memory candidates, workflow patches, prompt/skill suggestions, or analysis notes.
+- [ ] A user, reviewer, or policy-approved agent can accept, reject, or request changes on at least one contribution, memory candidate, or workflow patch.
+- [ ] Accepted knowledge, memory, or workflow revisions can be included in a later context pack, while rejected records remain visible in audit history.
+- [ ] `novi run inspect` or an equivalent CLI trace can explain the path from import/guidance to run, artifacts, candidates, review decision, and next-run context.
 
 Acceptance check:
 
-- [ ] One run can involve at least two meaningful roles, such as orchestrator plus reviewer/auditor or specialist.
-- [ ] One workflow can be generated, executed at a shallow level, reflected on, and patched.
-- [ ] One imported or user-authored contribution can be reviewed and merged or rejected.
-- [ ] One evidence-backed scientific memory candidate can be accepted or rejected without bypassing review.
-- [ ] The next run can consume the accepted record while rejected records remain visible in audit history.
-- [ ] The implementation demonstrates that multi-agent configuration, workflow iteration, collaboration, and memory can move together without any one of them becoming a hidden source of truth.
+- [ ] One run can involve at least one user-level/collaborator agent and one reviewer/auditor or executor agent with different scopes.
+- [ ] One imported raw input or link can be preserved as a source artifact and used to produce an analysis note or claim candidate.
+- [ ] One workflow can be drafted, executed at a shallow level, reflected on, and patched.
+- [ ] One workflow patch, memory/knowledge contribution, or prompt/skill suggestion can be accepted or rejected through review.
+- [ ] One evidence-backed conclusion or procedure can be written to, or proposed for, a layered Markdown knowledge vault without bypassing review.
+- [ ] One session can use file-backed mid-term memory to manage context without treating it as accepted project knowledge.
+- [ ] The next run can consume accepted knowledge/workflow records while rejected contributions remain visible in audit history.
 
 Defer:
 
+- [ ] No full standalone memory-manager project inside Novi Core.
+- [ ] No automatic mutation of accepted memory, workflows, prompts, or skills.
 - [ ] No full team permission admin.
 - [ ] No realtime collaborative editing.
 - [ ] No full scientific knowledge graph.
-- [ ] No automatic acceptance of memory, workflows, or imported knowledge.
 - [ ] No unrestricted DeepAgents filesystem, shell, or memory built-ins.
 - [ ] No full web dashboard or channel collaboration UX.
 

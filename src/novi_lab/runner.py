@@ -2,7 +2,7 @@ from pathlib import Path
 
 from .agents import agent_snapshot, load_agent
 from .ids import new_id
-from .kernels import run_deepagents_kernel, validate_kernel
+from .kernels import compile_kernel_binding, run_deepagents_kernel, validate_kernel
 from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
@@ -100,11 +100,18 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "skill_refs": ["research.review"] if run_type == "research" else [],
         "participants": participants,
         "context_pack_ids": [],
+        "kernel_binding_ids": [],
         "artifact_ids": [],
         "summary_path": str(run_dir / "summary.md"),
     }
     write_yaml(run_dir / "run.yaml", run_record)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCreated", session["id"], orchestrator, "Run created."))
+
+    for participant in participants:
+        binding = compile_kernel_binding(participant, kernel)
+        binding["run_id"] = run_id
+        append_jsonl(run_dir / "kernel_bindings.jsonl", binding)
+        run_record["kernel_binding_ids"].append(f"{participant['agent_id']}:{kernel}")
 
     context_id = new_id("ctx")
     context_path = run_dir / "context_pack.yaml"

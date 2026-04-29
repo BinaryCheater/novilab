@@ -252,6 +252,95 @@ minimum durable unit should be a claim or procedure with type, scope, evidence
 refs, confidence, review decision, and supersession state. Markdown can remain
 the readable surface, but the underlying record should preserve provenance.
 
+### Layered Knowledge And Memory Boundaries
+
+Open:
+
+Novi should distinguish a project knowledge base from agent/session memory.
+
+The project knowledge base may start as a layered Markdown vault with backlinks,
+where different layers have different trust and review semantics:
+
+1. Raw inputs: source files, links, excerpts, notes, logs, paper snippets, and
+   imported direct-session exports. These are factual inputs or references, not
+   accepted conclusions.
+2. Analysis notes: agent or human analysis derived from raw inputs, with links
+   back to source artifacts or excerpts.
+3. Accepted conclusions: reviewed claims, procedures, negative results,
+   hypotheses, experiment summaries, and decisions.
+4. Indexes and syntheses: directory pages, topic maps, literature summaries,
+   workflow summaries, and project-level overview documents.
+
+The Markdown vault should support human-readable `[[links]]`, but links alone
+are not enough for scientific reliability. Accepted conclusion pages should
+preserve provenance, evidence refs, review status, confidence, and supersession
+metadata when applicable.
+
+The long-term scientific memory system may eventually be delegated to a
+specialized external project or memory manager. Novi should therefore treat the
+vault as an adapter boundary:
+
+- Novi can import from it into context packs.
+- Novi can propose updates to it as reviewable contributions.
+- A memory manager agent or external memory project may maintain structure,
+  backlinks, summaries, and retrieval indexes.
+- Novi Core should still record which memory or knowledge pages affected a run.
+
+### Memory Types
+
+Open:
+
+Novi should separate at least three memory-like systems:
+
+1. Project knowledge base:
+   A layered Markdown vault containing raw inputs, excerpts, analysis,
+   accepted conclusions, indexes, and syntheses. It is project-readable and may
+   be maintained by humans, agents, or a separate memory manager.
+2. Agent/session mid-term memory:
+   File-backed working memory for an ongoing agent session or long run. Its
+   purpose is to avoid context overflow by summarizing intermediate state,
+   decisions, open questions, and scratch work. It is useful execution state,
+   but not accepted project knowledge.
+3. Long-term agent improvement memory:
+   Memory about workflows, prompts, skills, agent behavior, evaluation results,
+   and process improvements. This may be managed by a specialized agent that
+   proposes workflow patches, prompt patches, skill patches, or memory-vault
+   updates. It should not silently mutate accepted workflows, prompts, or
+   skills.
+
+Novi should record when any of these memory systems influence a run, but only
+reviewed project knowledge, accepted workflow revisions, accepted skill changes,
+or accepted memory contributions should become durable project state.
+
+### Agent Levels And Authority
+
+Open:
+
+Not every agent should be treated as the same kind of participant.
+
+Novi should distinguish:
+
+1. User-level agents:
+   Agents that operate as high-level collaborators with the user. They may help
+   plan, review, summarize, question assumptions, propose workflow changes,
+   propose memory updates, or coordinate executor agents. They can propose
+   changes to project state, but still cannot bypass review rules.
+2. Reviewer or auditor agents:
+   Agents that inspect evidence, traces, workflow patches, memory candidates,
+   tool calls, and contributions. They may recommend accept/reject/request
+   changes, but v0/v1 should not let them unilaterally commit high-impact
+   project state without an explicit policy decision.
+3. Executor agents:
+   Agents that perform bounded steps under a declared tool scope, context scope,
+   permission scope, and output contract. They are not peers of the user; they
+   are scoped workers. Their outputs enter Novi as artifacts, tool calls, step
+   results, or contribution candidates.
+
+This distinction matters for UX and policy. A user-level agent may appear in a
+session as a collaborator, while an executor agent should usually be visible as
+a run participant or workflow step assignee. Both must still be represented in
+run records when they affect execution or state.
+
 ## What EvoScientist Actually Builds On DeepAgents
 
 Observation:
@@ -568,10 +657,23 @@ These objects may be needed beyond the current v0 data model:
 - `Contribution`: imported or generated change proposal against project state.
 - `KnowledgeImport`: source artifact plus extraction state for user-provided
   documents, notes, logs, or direct agent-session exports.
+- `KnowledgeVault`: an external or local layered Markdown knowledge base with
+  backlinks, raw inputs, analysis notes, accepted conclusions, indexes, and
+  syntheses.
+- `KnowledgeLayer`: raw input, excerpt, analysis, accepted conclusion, index,
+  or synthesis.
+- `SessionMemory`: file-backed mid-term memory for a long-running agent session
+  or workflow execution.
+- `MemoryManager`: an agent or external system that proposes updates to the
+  knowledge vault, workflows, prompts, or skills without silently committing
+  them.
+- `AgentAuthorityLevel`: collaborator, reviewer/auditor, or executor.
 - `ClaimCandidate`: scientific claim extracted from evidence before it becomes
   memory.
-- `MemoryRecord`: accepted memory with type, evidence refs, scope, confidence,
-  review decision, and supersession history.
+- `MemoryRecord`: accepted durable memory or knowledge contribution with type,
+  layer, evidence refs, scope, confidence, review decision, backlinks, and
+  supersession history. It may be stored in Novi directly or in an external
+  Markdown knowledge vault adapter.
 
 These should not all be implemented at once. The exploration track should first
 test whether their boundaries are real and whether existing `RunSpec`,

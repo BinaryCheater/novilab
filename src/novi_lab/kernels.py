@@ -31,6 +31,25 @@ def _tool_function_name(tool_id):
     return tool_id.replace(".", "_").replace("-", "_")
 
 
+def compile_kernel_binding(participant, kernel):
+    tool_scope = list(participant.get("tool_scope", []))
+    hints = participant.get("kernel_binding_hints", {}).get(kernel, {})
+    if not hints and kernel == "simple":
+        hints = {"binding": "direct", "interrupt_on": [], "backend_routes": []}
+    return {
+        "agent_id": participant.get("agent_id"),
+        "role": participant.get("role"),
+        "authority_level": participant.get("authority_level", "executor"),
+        "kernel": kernel,
+        "binding": hints.get("binding", "direct"),
+        "tool_ids": tool_scope,
+        "tool_names": [_tool_function_name(tool_id) for tool_id in tool_scope],
+        "prompt_refs": list(participant.get("prompt_refs", [])),
+        "interrupt_on": list(hints.get("interrupt_on", [])),
+        "backend_routes": list(hints.get("backend_routes", [])),
+    }
+
+
 def _tool_wrapper(root, run_dir, run_id, participant, tool_id):
     def record_call(kwargs):
         call = execute_tool(root, run_id, participant, tool_id, kwargs, source="deepagents_model")

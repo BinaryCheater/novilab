@@ -83,6 +83,20 @@ def test_agent_create_list_and_show(tmp_path):
     assert "Tool scope:" in show_result.stdout
 
 
+def test_agent_profile_v2_records_authority_and_binding_hints(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "agent", "show", "agent_orchestrator")
+
+    assert result.returncode == 0, result.stderr
+    assert "Authority level: collaborator" in result.stdout
+    assert "Interface mode: cli" in result.stdout
+    assert "Prompt refs:" in result.stdout
+    assert "research.review" in result.stdout
+    assert "Kernel binding hints:" in result.stdout
+    assert "deepagents_subagent" in result.stdout
+
+
 def test_agent_configuration_commands_update_scope_and_model(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
@@ -115,6 +129,16 @@ def test_tool_list_and_show_builtin_tool(tmp_path):
     assert "Tool: search_stub.query" in show_result.stdout
     assert "Risk: read_only" in show_result.stdout
     assert "Policy: allowed" in show_result.stdout
+
+
+def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "tool", "show", "search_stub.query")
+
+    assert result.returncode == 0, result.stderr
+    assert "Expose to:" in result.stdout
+    assert "agent_orchestrator" in result.stdout
 
 
 def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
@@ -655,6 +679,28 @@ def test_run_records_allowed_tool_runtime_result(tmp_path):
     assert '"policy_result": "allowed"' in tool_calls
     assert '"status": "success"' in tool_calls
     assert '"executor": "novi_tool_runtime"' in tool_calls
+
+
+def test_run_archives_compiled_kernel_bindings(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "binding run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "inspect bindings")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    binding_text = (run_dir / "kernel_bindings.jsonl").read_text()
+    inspect_result = run_cli(tmp_path, "run", "inspect", run_id)
+    trace_result = run_cli(tmp_path, "run", "trace", run_id)
+
+    assert '"agent_id": "agent_orchestrator"' in binding_text
+    assert '"authority_level": "collaborator"' in binding_text
+    assert '"kernel": "simple"' in binding_text
+    assert '"tool_names": ["search_stub_query"]' in binding_text
+    assert "Kernel bindings:" in inspect_result.stdout
+    assert "agent_orchestrator simple" in inspect_result.stdout
+    assert "Kernel bindings:" in trace_result.stdout
 
 
 def test_run_records_blocked_tool_when_agent_lacks_scope(tmp_path):

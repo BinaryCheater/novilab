@@ -14,6 +14,7 @@ def builtin_tools():
             "policy": "allowed",
             "input_schema": {"query": "string"},
             "output_artifacts": ["search_result_stub"],
+            "expose_to": ["agent_orchestrator"],
         },
         {
             "id": "filesystem.read",
@@ -22,6 +23,7 @@ def builtin_tools():
             "policy": "allowed",
             "input_schema": {"path": "string"},
             "output_artifacts": ["file_text"],
+            "expose_to": ["agent_orchestrator", "agent_auditor"],
         },
         {
             "id": "git.status",
@@ -30,6 +32,7 @@ def builtin_tools():
             "policy": "allowed",
             "input_schema": {},
             "output_artifacts": ["git_status"],
+            "expose_to": ["agent_orchestrator", "agent_auditor"],
         }
     ]
 
