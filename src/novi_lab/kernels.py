@@ -33,7 +33,7 @@ def _tool_function_name(tool_id):
 
 def _tool_wrapper(root, run_dir, run_id, participant, tool_id):
     def record_call(kwargs):
-        call = execute_tool(root, run_id, participant, tool_id, kwargs)
+        call = execute_tool(root, run_id, participant, tool_id, kwargs, source="deepagents_model")
         append_jsonl(Path(run_dir) / "tool_calls.jsonl", call)
         return json.dumps(
             {
@@ -99,6 +99,58 @@ def _file_content(value):
     return str(getattr(value, "content", value))
 
 
+def _message_value(message, key, default=None):
+    if isinstance(message, dict):
+        return message.get(key, default)
+    return getattr(message, key, default)
+
+
+def _message_role(message):
+    role = _message_value(message, "role")
+    if role:
+        return role
+    message_type = _message_value(message, "type")
+    if message_type:
+        return message_type
+    return type(message).__name__
+
+
+def _jsonable(value):
+    try:
+        json.dumps(value)
+        return value
+    except TypeError:
+        return str(value)
+
+
+def _message_record(index, message):
+    record = {
+        "index": index,
+        "role": _message_role(message),
+        "content": str(_message_value(message, "content", "")),
+        "message_type": type(message).__name__,
+    }
+    tool_calls = _message_value(message, "tool_calls")
+    if tool_calls:
+        record["tool_calls"] = _jsonable(tool_calls)
+    tool_call_id = _message_value(message, "tool_call_id")
+    if tool_call_id:
+        record["tool_call_id"] = str(tool_call_id)
+    name = _message_value(message, "name")
+    if name:
+        record["name"] = str(name)
+    return record
+
+
+def _archive_deepagents_messages(run_dir, result):
+    if not isinstance(result, dict) or not result.get("messages"):
+        return None
+    path = Path(run_dir) / "deepagents_messages.jsonl"
+    for index, message in enumerate(result["messages"]):
+        append_jsonl(path, _message_record(index, message))
+    return path
+
+
 def _export_deepagents_files(run_dir, run_record, result):
     if not isinstance(result, dict) or not result.get("files"):
         return []
@@ -152,6 +204,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
         )
         result = agent.invoke({"messages": [{"role": "user", "content": run_record["objective"]}]})
         response_text = _extract_response_text(result)
+        messages_path = _archive_deepagents_messages(run_dir, result)
         exported_files = _export_deepagents_files(run_dir, run_record, result)
         response_path.write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
         append_jsonl(
@@ -166,6 +219,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
                 "completed_at": utc_now(),
                 "prompt_path": str(prompt_path),
                 "response_path": str(response_path),
+                "messages_path": str(messages_path) if messages_path else None,
                 "exported_files": exported_files,
             },
         )

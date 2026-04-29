@@ -57,7 +57,7 @@ def evaluate_policy(tool):
     return "blocked"
 
 
-def execute_tool(root, run_id, agent, tool_id, args):
+def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
     tool = load_tool(root, tool_id)
     now = utc_now()
     call = {
@@ -74,6 +74,7 @@ def execute_tool(root, run_id, agent, tool_id, args):
         "policy_result": "unknown",
         "artifact_ids": [],
         "executor": "novi_tool_runtime",
+        "source": source,
     }
 
     if tool_id not in agent.get("tool_scope", []):

@@ -171,7 +171,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         )
 
     tool_actor = participants[0]
-    tool_call = execute_tool(root, run_id, tool_actor, "search_stub.query", {"query": objective})
+    tool_call = execute_tool(root, run_id, tool_actor, "search_stub.query", {"query": objective}, source="runner_preflight")
     append_jsonl(run_dir / "tool_calls.jsonl", tool_call)
     if tool_call["status"] == "success":
         append_jsonl(run_dir / "events.jsonl", _event(run_id, "ToolExecuted", session["id"], tool_actor["agent_id"], "search_stub.query completed.", {"tool_call_id": tool_call["id"]}))

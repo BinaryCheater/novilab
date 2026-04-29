@@ -285,15 +285,19 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     response_text = (run_dir / "response.md").read_text()
     model_calls = (run_dir / "model_calls.jsonl").read_text()
     tool_calls = (run_dir / "tool_calls.jsonl").read_text()
+    deepagents_messages = (run_dir / "deepagents_messages.jsonl").read_text()
     exported_file = run_dir / "deepagents_files" / "notes.md"
 
     assert "deepagents response" in response_text
     assert exported_file.read_text() == "deepagents working file"
     assert "deepagents_files/notes.md" in (run_dir / "run.yaml").read_text()
+    assert '"content": "deepagents response' in deepagents_messages
     assert '"status": "success"' in model_calls
     assert '"kernel": "deepagents"' in model_calls
     assert '"tool_id": "search_stub.query"' in tool_calls
     assert "adapter smoke" in tool_calls
+    assert '"source": "runner_preflight"' in tool_calls
+    assert '"source": "deepagents_model"' in tool_calls
 
 
 def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, monkeypatch):
