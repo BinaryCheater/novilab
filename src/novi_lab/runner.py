@@ -74,7 +74,7 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
-def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple"):
+def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True):
     validate_kernel(kernel)
     now = utc_now()
     run_id = new_id("run")
@@ -171,22 +171,23 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         )
 
     tool_actor = participants[0]
-    tool_call = execute_tool(root, run_id, tool_actor, "search_stub.query", {"query": objective}, source="runner_preflight")
-    append_jsonl(run_dir / "tool_calls.jsonl", tool_call)
-    if tool_call["status"] == "success":
-        append_jsonl(run_dir / "events.jsonl", _event(run_id, "ToolExecuted", session["id"], tool_actor["agent_id"], "search_stub.query completed.", {"tool_call_id": tool_call["id"]}))
-    else:
-        append_jsonl(
-            run_dir / "events.jsonl",
-            _event(
-                run_id,
-                "ToolBlocked",
-                session["id"],
-                tool_actor["agent_id"],
-                f"search_stub.query blocked: {tool_call.get('block_reason', 'unknown')}.",
-                {"tool_call_id": tool_call["id"], "block_reason": tool_call.get("block_reason")},
-            ),
-        )
+    if preflight_tools:
+        tool_call = execute_tool(root, run_id, tool_actor, "search_stub.query", {"query": objective}, source="runner_preflight")
+        append_jsonl(run_dir / "tool_calls.jsonl", tool_call)
+        if tool_call["status"] == "success":
+            append_jsonl(run_dir / "events.jsonl", _event(run_id, "ToolExecuted", session["id"], tool_actor["agent_id"], "search_stub.query completed.", {"tool_call_id": tool_call["id"]}))
+        else:
+            append_jsonl(
+                run_dir / "events.jsonl",
+                _event(
+                    run_id,
+                    "ToolBlocked",
+                    session["id"],
+                    tool_actor["agent_id"],
+                    f"search_stub.query blocked: {tool_call.get('block_reason', 'unknown')}.",
+                    {"tool_call_id": tool_call["id"], "block_reason": tool_call.get("block_reason")},
+                ),
+            )
 
     if kernel == "deepagents":
         run_deepagents_kernel(root, run_dir, run_record, prompt_path)

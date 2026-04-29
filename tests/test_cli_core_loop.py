@@ -372,6 +372,23 @@ def test_ask_records_messages_and_includes_recent_context(tmp_path):
     recent_messages = latest_run / "prompt_parts" / "70-recent-messages.jsonl"
     assert recent_messages.exists()
     assert "first question" in recent_messages.read_text()
+    assert "runner_preflight" not in (latest_run / "tool_calls.jsonl").read_text()
+
+
+def test_prompt_lists_deepagents_callable_tool_names(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "tool protocol run")
+    run_cli(tmp_path, "agent", "grant-tool", "agent_orchestrator", "filesystem.read")
+
+    result = run_cli(tmp_path, "run", "start", "research", "explain tools", "--kernel", "simple")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    tools_prompt = tmp_path / ".novi" / "runs" / run_id / "prompt_parts" / "40-tools.md"
+    tools_text = tools_prompt.read_text()
+    assert "Callable name: search_stub_query" in tools_text
+    assert "Callable name: filesystem_read" in tools_text
+    assert "Call the tool function when tool output is needed" in tools_text
 
 
 def test_deepagents_kernel_supports_openai_chat_compatible_provider(tmp_path, monkeypatch):

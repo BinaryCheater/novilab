@@ -42,6 +42,10 @@ def _part_record(path, content):
     }
 
 
+def _tool_callable_name(tool_id):
+    return tool_id.replace(".", "_").replace("-", "_")
+
+
 def build_prompt_parts(root, run_record, context_pack):
     skills = _by_id(discover_skills(root))
     tools = _by_id(list_tools(root))
@@ -86,7 +90,13 @@ def build_prompt_parts(root, run_record, context_pack):
         skill = skills.get(skill_ref, {"description": ""})
         skill_lines.extend([f"## Skill: {skill_ref}", "", skill.get("description", ""), ""])
 
-    tool_lines = ["# Tools", ""]
+    tool_lines = [
+        "# Tools",
+        "",
+        "Call the tool function when tool output is needed. Do not only say that you will inspect or read something.",
+        "Use the callable names below when selecting tools.",
+        "",
+    ]
     for tool_id in primary_agent.get("tool_scope", []):
         tool = tools.get(tool_id)
         if not tool:
@@ -95,6 +105,7 @@ def build_prompt_parts(root, run_record, context_pack):
             [
                 f"## Tool: {tool_id}",
                 "",
+                f"- Callable name: {_tool_callable_name(tool_id)}",
                 f"- Risk: {tool.get('risk', '-')}",
                 f"- Policy: {tool.get('policy', '-')}",
                 f"- Description: {tool.get('description', '')}",

@@ -229,7 +229,7 @@ def cmd_ask(args):
     session = active_session(Path.cwd())
     append_session_message(Path.cwd(), session["id"], "user", args.message)
     agents = [load_agent(Path.cwd(), agent_id) for agent_id in args.agent]
-    run = start_deterministic_run(Path.cwd(), session, args.type, args.message, agents, kernel=args.kernel)
+    run = start_deterministic_run(Path.cwd(), session, args.type, args.message, agents, kernel=args.kernel, preflight_tools=False)
     body = _response_body(require_workspace(Path.cwd()) / "runs" / run["id"])
     append_session_message(Path.cwd(), session["id"], "assistant", body, run_id=run["id"])
     print(f"Run: {run['id']}")
