@@ -21,6 +21,7 @@ Proposal:
 - 先支持清晰的人类参与者、权限和归因，再支持更复杂的 worker 协作。
 - 先记录和审批，再扩大工具权限。
 - 先让 modules 可替换，再选择具体 provider。
+- 当几个基础能力互相依赖时，用一个 integrated、inspectable 的闭环一起推进，而不是假装它们可以完全独立解决。
 
 ## Phase 0：规格收敛
 
@@ -106,6 +107,57 @@ Defer:
 - [ ] DeepAgents advanced streaming、checkpoint/resume、subagent mapping、built-in write/shell tool mapping 后置。
 - [ ] 不做复杂 permission matrix。
 
+## Phase 1.5：Integrated Exploration Track
+
+目标：在不放弃 local-first 和 inspectable core 的前提下，一起探索 configurable agents、workflow iteration、contribution review 和 scientific memory。
+
+假设：这些基础能力互相依赖。Novi 不应把它们拆成互不相关的后置 phases，而应用一个小而完整的 loop 验证边界：
+
+```text
+import knowledge
+-> compile/select agent profiles
+-> generate or update workflow
+-> execute scoped run
+-> produce artifacts, workflow patches, and memory candidates
+-> review/merge selected contributions
+-> next run consumes accepted records
+```
+
+Entry check:
+
+- [ ] Phase 1 run ledger、artifact store、tool runtime 和 memory candidate flow 可用。
+- [ ] `exploration.md` 已明确探索对象和 EvoScientist/DeepAgents 参考差异。
+- [ ] Agent profile、workflow、contribution、memory 四个方向已各自定义一个最小可检查边界。
+- [ ] 已接受这不是完整 multi-agent platform，也不是完整 collaboration system。
+
+Build check:
+
+- [ ] 能定义一个 project-local agent profile，包含 prompt refs、tool scope、permission scope、model profile 和 output contract。
+- [ ] 能把 agent profile 编译或映射到当前 kernel，而不把 kernel-specific representation 当成 source record。
+- [ ] 能记录一个 generated workflow 或 workflow artifact，包含 steps、success signals 和 iteration triggers。
+- [ ] Agent 可提出 workflow patch，但不能静默修改 accepted workflow。
+- [ ] 用户导入知识时形成 artifact 和 contribution，而不是直接进入 memory。
+- [ ] Agent 可从导入知识和 run artifacts 中产生 claim/memory candidate。
+- [ ] Reviewer/user 可 accept/reject/request changes，并把 decision 写入 ledger。
+- [ ] Accepted memory 或 accepted workflow revision 可进入下一次 run 的 context pack。
+- [ ] Direct DeepAgents-like session 的输出可被导入为 artifacts/contributions，但不能绕过 review。
+
+Acceptance check:
+
+- [ ] 一次 demo 能展示 imported knowledge、agent profile、workflow patch、review decision 和 evidence-backed memory candidate 的完整链路。
+- [ ] `novi run inspect` 或等价 inspect surface 能解释每个状态变化来自谁、依据什么 evidence、是否被接受。
+- [ ] DeepAgents/LangGraph checkpoint 可用于 execution recovery，但 Novi run ledger 仍是 source of truth。
+- [ ] 新增对象没有迫使 Novi 立即实现 realtime collaboration、full workflow engine 或完整 knowledge graph。
+
+Defer:
+
+- [ ] 不做完整 team workspace。
+- [ ] 不做复杂 agent marketplace。
+- [ ] 不做实时多人编辑。
+- [ ] 不做完整 workflow scheduler。
+- [ ] 不做完整 scientific knowledge graph。
+- [ ] 不把 EvoScientist 的 channel/memory/sandbox 设计整体照搬进 Novi。
+
 ## Phase 2：Research 与 Deep Research
 
 目标：让 Novi 能处理真实研究任务，产生可追溯 sources、evidence table、report 和 artifacts。
@@ -113,6 +165,7 @@ Defer:
 Entry check:
 
 - [ ] Phase 1 的 run ledger、artifact store、tool runtime 可用。
+- [ ] Phase 1.5 已澄清哪些 agent、workflow、contribution、memory 对象是真需求，哪些只是探索脚手架。
 - [ ] search/web/pdf/browser 的风险边界已写入 tooling spec。
 - [ ] 已决定第一版 search 使用 hosted provider、self-hosted provider，还是 stub。
 
@@ -352,3 +405,6 @@ Open:
 3. Browser automation 是否进入 Phase 2，还是 Phase 5 后？
 4. Coding worker 是否作为 cowork 的第一个真实 worker adapter，还是应先做 human review/approval？
 5. Physical-AI 中 simulation、training、dataset、evaluation、ROS 的先后关系如何定？
+6. Phase 1.5 多宽才仍是 integrated exploration，而不是 overdesign？
+7. `exploration.md` 中哪些新 records 应先进入 durable data model：`AgentProfile`、`WorkflowSpec`、`Contribution`、`KnowledgeImport`、`ClaimCandidate`、`MemoryRecord`？
+8. 最小 demo 是什么，能证明 Novi 支持 scientific self-iteration，而不是只整理 agent transcripts？

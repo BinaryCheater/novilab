@@ -11,11 +11,12 @@
 1. `v0-scope.md`：收敛第一个可用版本。
 2. `architecture.md`：定义核心产品形态和系统边界。
 3. `tooling-and-modules.md`：讨论候选工具和模块边界。
-4. `features.md`：整理产品 feature 表和优先级。
-5. `roadmap.md`：整理方向性路线图。
-6. `data-model.md`：定义持久对象和记录格式。
-7. `cli.md`：定义第一版命令行界面。
-8. `open-questions.md`：列出仍需确认的决策。
+4. `exploration.md`：探索 configurable agents、workflow iteration、collaboration 和 scientific memory 如何共同演化。
+5. `features.md`：整理产品 feature 表和优先级。
+6. `roadmap.md`：整理方向性路线图。
+7. `data-model.md`：定义持久对象和记录格式。
+8. `cli.md`：定义第一版命令行界面。
+9. `open-questions.md`：列出仍需确认的决策。
 
 ## 背景来源
 

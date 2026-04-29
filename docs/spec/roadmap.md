@@ -21,6 +21,7 @@ Proposal:
 - Support clear human participants, permissions, and attribution before more complex worker collaboration.
 - Record and approve before expanding tool permissions.
 - Keep modules replaceable before choosing providers.
+- When foundational capabilities are mutually dependent, advance them through one integrated, inspectable loop instead of pretending they can be solved independently.
 
 ## Phase 0: Spec Convergence
 
@@ -111,6 +112,50 @@ Defer:
 - [ ] No complex permission matrix.
 - [ ] No full cowork/project participant system.
 
+## Phase 1.5: Integrated Exploration Track
+
+Goal: explore configurable agents, workflow iteration, collaboration, and scientific memory together without turning Novi into an unbounded platform build.
+
+This track is intentionally broader than a single knowledge-import slice. The hypothesis is that these four foundations shape each other and should be validated together, while each remains shallow, local-first, and inspectable.
+
+Entry check:
+
+- [ ] Phase 1 local records and CLI inspection are usable.
+- [ ] `exploration.md` has been reviewed as an exploration document, not as accepted implementation scope.
+- [ ] DeepAgents remains an optional kernel and does not own Novi source-of-truth records.
+- [ ] ToolRuntime, artifacts, run events, model calls, and memory candidates are still the default audit boundary.
+
+Build check:
+
+- [ ] Agent profile records can express prompt refs, tool scope, permission scope, model profile, interface mode, and output schema.
+- [ ] A Novi agent profile can compile into the selected execution kernel, including a DeepAgents main agent or subagent binding when appropriate.
+- [ ] A generated workflow can be saved as a `WorkflowSpec`-like record with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers.
+- [ ] Agent-generated workflow changes are saved as patches or proposed revisions, not silent edits.
+- [ ] A user can import project knowledge, notes, paper snippets, or prior experiment logs as artifacts and contributions.
+- [ ] Imported knowledge can be processed by an agent into claim candidates, memory candidates, workflow patches, or skill/process suggestions.
+- [ ] A user or reviewer can accept, reject, or request changes on at least one contribution or memory/workflow candidate.
+- [ ] Direct DeepAgents-style work can be imported back into Novi as artifacts/contributions rather than becoming accepted project state automatically.
+- [ ] Accepted memory or workflow revisions can be included in a later context pack.
+- [ ] `novi run inspect` or an equivalent CLI trace can explain the full path from import/guidance to run, artifacts, candidates, review decision, and next-run context.
+
+Acceptance check:
+
+- [ ] One run can involve at least two meaningful roles, such as orchestrator plus reviewer/auditor or specialist.
+- [ ] One workflow can be generated, executed at a shallow level, reflected on, and patched.
+- [ ] One imported or user-authored contribution can be reviewed and merged or rejected.
+- [ ] One evidence-backed scientific memory candidate can be accepted or rejected without bypassing review.
+- [ ] The next run can consume the accepted record while rejected records remain visible in audit history.
+- [ ] The implementation demonstrates that multi-agent configuration, workflow iteration, collaboration, and memory can move together without any one of them becoming a hidden source of truth.
+
+Defer:
+
+- [ ] No full team permission admin.
+- [ ] No realtime collaborative editing.
+- [ ] No full scientific knowledge graph.
+- [ ] No automatic acceptance of memory, workflows, or imported knowledge.
+- [ ] No unrestricted DeepAgents filesystem, shell, or memory built-ins.
+- [ ] No full web dashboard or channel collaboration UX.
+
 ## Phase 2: Research And Deep Research
 
 Goal: make Novi useful for real research tasks that produce traceable sources, evidence tables, reports, and artifacts.
@@ -118,6 +163,7 @@ Goal: make Novi useful for real research tasks that produce traceable sources, e
 Entry check:
 
 - [ ] Phase 1 run ledger, artifact store, and tool runtime are usable.
+- [ ] Phase 1.5 has clarified which agent, workflow, contribution, and memory objects are real requirements versus temporary exploration scaffolding.
 - [ ] Search/web/pdf/browser risk boundaries are in the tooling spec.
 - [ ] First search approach is chosen: hosted provider, self-hosted provider, or stub.
 
@@ -357,3 +403,6 @@ Open:
 3. Should browser automation enter Phase 2, or wait until after stronger control surfaces?
 4. Should coding worker be the first real worker adapter, or should human review/approval come first?
 5. What order should simulation, training, dataset, evaluation, and ROS take within Physical-AI?
+6. How broad should Phase 1.5 be before it becomes overdesign rather than integrated exploration?
+7. Which new records from `exploration.md` should become durable data model objects first: `AgentProfile`, `WorkflowSpec`, `WorkflowPatch`, `Contribution`, `KnowledgeImport`, `ClaimCandidate`, or stronger `MemoryRecord`?
+8. What is the smallest demonstration that Novi can support scientific self-iteration without silently accepting unreviewed agent output?
