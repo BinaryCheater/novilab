@@ -248,26 +248,34 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli memor
 
 ## 10. 文档处理与 Patch Review
 
-导入文档后，可以先让 Novi 的 deterministic document-merge workflow 处理导入贡献：
+推荐使用一条命令完成导入、必要时创建 session、执行 `document-merge`，并打印后续 review 命令：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process contrib_... \
-  --workflow document-merge \
+uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli ingest notes.md \
   --target .novi/knowledge/topics/physical-priors.md
 ```
 
-这会创建一个 processing run、一个 analysis note artifact，以及一个 `document_patch` contribution。没有 `--target` 时只生成 analysis note，不生成可 apply patch。
+`ingest` 默认使用 DeepAgents/LLM kernel。执行时会在 stdout 打印阶段进度，例如加载 workflow、创建 run、等待模型响应、归档响应、创建 patch contribution，避免长模型调用看起来像卡死。
 
-使用 DeepAgents/LLM 路径：
+如果已经导入过文档，也可以处理最新 pending import，不必复制 contribution id：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process \
+  --target .novi/knowledge/topics/physical-priors.md
+```
+
+需要 deterministic fallback 时显式指定：
 
 ```bash
 uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process contrib_... \
   --workflow document-merge \
   --target .novi/knowledge/topics/physical-priors.md \
-  --kernel deepagents
+  --kernel simple
 ```
 
-LLM 路径会把 WorkflowSpec、`document.curate`、`document.merge`、导入文档和目标文档拼成 `processing_prompt.md`。模型应优先返回 virtual files：
+这会创建一个 processing run、一个 analysis note artifact，以及一个 `document_patch` contribution。没有 `--target` 时只生成 analysis note，不生成可 apply patch。
+
+LLM 路径会把 WorkflowSpec、`document.curate`、`document.merge`、导入文档和目标文档拼成 `processing_prompt.md`。DeepAgents working-file tools 只能看到虚拟工作区，不能直接读取 Novi 项目里的 `.novi/...` 路径；prompt 中的 Imported Document 和 Target Document 是权威输入。模型应优先返回 virtual files：
 
 ```text
 /analysis_note.md

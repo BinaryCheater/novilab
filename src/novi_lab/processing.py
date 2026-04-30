@@ -188,7 +188,7 @@ def _processing_prompt(root, workflow_record, source_text, source_artifact, impo
     )
 
 
-def _run_deepagents_processing(root, run_dir, run_record, workflow_record, source_text, source_artifact, import_contribution, target, target_text):
+def _run_deepagents_processing(root, run_dir, run_record, workflow_record, source_text, source_artifact, import_contribution, target, target_text, progress=None):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
     prompt = _processing_prompt(root, workflow_record, source_text, source_artifact, import_contribution, target, target_text)
@@ -201,12 +201,16 @@ def _run_deepagents_processing(root, run_dir, run_record, workflow_record, sourc
     model, model_record = resolve_deepagents_model(root, participant)
     started_at = utc_now()
     try:
+        if progress:
+            progress("Preparing DeepAgents document processor.")
         agent = create_deep_agent(
             model=model,
             tools=[],
             system_prompt=prompt,
             name="agent_orchestrator",
         )
+        if progress:
+            progress("Waiting for DeepAgents model response...")
         result = agent.invoke(
             {
                 "messages": [
@@ -217,6 +221,8 @@ def _run_deepagents_processing(root, run_dir, run_record, workflow_record, sourc
                 ]
             }
         )
+        if progress:
+            progress("Archiving DeepAgents response and virtual files.")
         _archive_deepagents_messages(run_dir, result)
         analysis, proposed, response_text = _extract_deepagents_outputs(result)
         (Path(run_dir) / "response.md").write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
@@ -269,7 +275,9 @@ def _step(workflow, step_id, status, artifact_ids=None, contribution_ids=None, s
     return result
 
 
-def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="simple"):
+def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="deepagents", progress=None):
+    if progress:
+        progress(f"Loading workflow: {workflow}")
     workflow_record = load_workflow(root, workflow)
     if workflow_record.get("id") != "document-merge":
         raise RuntimeError(f"Unsupported processing workflow: {workflow}")
@@ -279,6 +287,8 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     session = active_session(root)
     if target:
         target_type_for_path(root, target)
+    if progress:
+        progress(f"Loading import contribution: {contribution_id}")
     import_contribution, _ = load_contribution(root, contribution_id)
     if import_contribution.get("type") != "knowledge_import":
         raise RuntimeError(f"Contribution is not an import contribution: {contribution_id}")
@@ -292,6 +302,8 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
 
     run_id = new_id("run")
     run_dir = create_run_dir(root, run_id)
+    if progress:
+        progress(f"Created run: {run_id}")
     now = utc_now()
     run_record = {
         "id": run_id,
@@ -329,8 +341,11 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
             import_contribution,
             target,
             target_text,
+            progress=progress,
         )
 
+    if progress:
+        progress("Writing analysis artifact.")
     analysis_artifact_id = new_id("art")
     analysis_path = run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md"
     analysis_text = model_analysis or "\n".join(
@@ -372,6 +387,8 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
 
     patch_contribution = None
     if target:
+        if progress:
+            progress("Creating reviewable document patch contribution.")
         target_path = Path(target)
         target_text = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
         proposed = model_proposed or _append_import_section(

@@ -548,20 +548,81 @@ def cmd_import(args):
     return 0
 
 
+def _progress(message):
+    print(f"[novi] {message}", flush=True)
+
+
+def _latest_pending_import(root):
+    imports = [
+        item
+        for item in list_contributions(root)
+        if item.get("type") == "knowledge_import" and item.get("status") == "pending"
+    ]
+    if not imports:
+        raise RuntimeError("No pending knowledge import contribution found. Run `novi import <file>` first.")
+    imports.sort(key=lambda item: item.get("created_at", ""))
+    return imports[-1]
+
+
+def _print_process_result(result):
+    print(f"Run: {result['run']['id']}")
+    print(f"Kernel: {result['run'].get('kernel', '-')}")
+    print(f"Analysis artifact: {result['analysis_artifact']['id']}")
+    if result["patch_contribution"]:
+        patch_id = result["patch_contribution"]["id"]
+        print(f"Patch contribution: {patch_id}")
+        print("Next:")
+        print(f"- novi contribution inspect {patch_id}")
+        print(f"- novi contribution check {patch_id}")
+        print(f"- novi contribution accept {patch_id}")
+    else:
+        print("No patch contribution created")
+
+
 def cmd_process(args):
+    contribution_id = args.contribution_id
+    if not contribution_id:
+        contribution = _latest_pending_import(Path.cwd())
+        contribution_id = contribution["id"]
+        print(f"Using latest pending import contribution: {contribution_id}", flush=True)
     result = process_imported_document(
         Path.cwd(),
-        args.contribution_id,
+        contribution_id,
         workflow=args.workflow,
         target=args.target,
         kernel=args.kernel,
+        progress=_progress,
     )
-    print(f"Run: {result['run']['id']}")
-    print(f"Analysis artifact: {result['analysis_artifact']['id']}")
-    if result["patch_contribution"]:
-        print(f"Patch contribution: {result['patch_contribution']['id']}")
-    else:
-        print("No patch contribution created")
+    _print_process_result(result)
+    return 0
+
+
+def cmd_ingest(args):
+    root = Path.cwd()
+    try:
+        session = active_session(root)
+        print(f"Using active session: {session['id']}", flush=True)
+    except RuntimeError:
+        session = create_session(root, args.session_title)
+        print(f"Created session: {session['id']}", flush=True)
+    contribution, artifact = import_knowledge_file(root, args.source)
+    print(f"Imported: {contribution['id']}")
+    print(f"Import artifact: {artifact['id']}")
+    result = process_imported_document(
+        root,
+        contribution["id"],
+        workflow=args.workflow,
+        target=args.target,
+        kernel=args.kernel,
+        progress=_progress,
+    )
+    _print_process_result(result)
+    if args.accept:
+        patch = result.get("patch_contribution")
+        if not patch:
+            raise RuntimeError("No patch contribution was created; nothing to accept.")
+        accepted = apply_patch_contribution(root, patch["id"])
+        print(f"Accepted and merged: {accepted['id']}")
     return 0
 
 
@@ -853,11 +914,20 @@ def build_parser():
     import_parser.add_argument("source")
     import_parser.set_defaults(func=cmd_import)
 
+    ingest_parser = subparsers.add_parser("ingest")
+    ingest_parser.add_argument("source")
+    ingest_parser.add_argument("--target")
+    ingest_parser.add_argument("--workflow", default="document-merge")
+    ingest_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    ingest_parser.add_argument("--session-title", default="document ingest")
+    ingest_parser.add_argument("--accept", action="store_true")
+    ingest_parser.set_defaults(func=cmd_ingest)
+
     process_parser = subparsers.add_parser("process")
-    process_parser.add_argument("contribution_id")
+    process_parser.add_argument("contribution_id", nargs="?")
     process_parser.add_argument("--workflow", default="document-merge")
     process_parser.add_argument("--target")
-    process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="simple")
+    process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     process_parser.set_defaults(func=cmd_process)
 
     review_parser = subparsers.add_parser("review")

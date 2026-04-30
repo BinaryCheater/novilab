@@ -27,6 +27,12 @@ def parse_id(output, prefix):
     return match.group(1)
 
 
+def parse_labeled_id(output, label, prefix):
+    match = re.search(rf"{re.escape(label)}\s*({prefix}[0-9TZA-Z_a-z]+)\b", output)
+    assert match, output
+    return match.group(1)
+
+
 def test_project_requires_python_311_for_deepagents_adapter():
     pyproject = (REPO_ROOT / "pyproject.toml").read_text()
 
@@ -452,11 +458,13 @@ def test_process_import_with_target_creates_analysis_note_and_patch_contribution
         "document-merge",
         "--target",
         str(target),
+        "--kernel",
+        "simple",
     )
 
     assert process_result.returncode == 0, process_result.stderr
     run_id = parse_id(process_result.stdout, "run_")
-    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
     analysis_artifact_id = parse_id(process_result.stdout, "art_")
     patch_contribution = tmp_path / ".novi" / "contributions" / f"{patch_contribution_id}.yaml"
     run_dir = tmp_path / ".novi" / "runs" / run_id
@@ -502,8 +510,10 @@ def test_contribution_check_and_accept_apply_document_patch(tmp_path):
         "document-merge",
         "--target",
         str(target),
+        "--kernel",
+        "simple",
     )
-    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
 
     check_result = run_cli(tmp_path, "contribution", "check", patch_contribution_id)
     accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)
@@ -537,8 +547,10 @@ def test_contribution_accept_marks_conflict_when_target_changed(tmp_path):
         "document-merge",
         "--target",
         str(target),
+        "--kernel",
+        "simple",
     )
-    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
     target.write_text("# Physical Priors\n\nHuman changed this file.\n", encoding="utf-8")
 
     accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)
@@ -559,7 +571,7 @@ def test_process_import_without_target_only_creates_analysis_note(tmp_path):
     import_result = run_cli(tmp_path, "import", str(note))
     import_contribution_id = parse_id(import_result.stdout, "contrib_")
 
-    process_result = run_cli(tmp_path, "process", import_contribution_id, "--workflow", "document-merge")
+    process_result = run_cli(tmp_path, "process", import_contribution_id, "--workflow", "document-merge", "--kernel", "simple")
 
     assert process_result.returncode == 0, process_result.stderr
     run_id = parse_id(process_result.stdout, "run_")
@@ -651,7 +663,7 @@ def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_pat
 
     assert process_result.returncode == 0, process_result.stderr
     run_id = parse_id(process_result.stdout, "run_")
-    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
     analysis_artifact_id = parse_id(process_result.stdout, "art_")
     run_dir = tmp_path / ".novi" / "runs" / run_id
 
@@ -667,6 +679,99 @@ def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_pat
 
     assert accept_result.returncode == 0, accept_result.stderr
     assert "Merged by DeepAgents." in target.read_text(encoding="utf-8")
+
+
+def test_process_defaults_to_deepagents_and_can_select_latest_pending_import(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {",
+                "            'messages': [FakeMessage('processed latest import')],",
+                "            'files': {",
+                "                '/analysis_note.md': {'content': '# Analysis\\n\\nLatest import analyzed.'},",
+                "                '/proposed.md': {'content': '# Target\\n\\nMerged latest import.'},",
+                "            },",
+                "        }",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "default deepagents process")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "target.md"
+    target.write_text("# Target\n\nExisting.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nUse latest pending import.\n", encoding="utf-8")
+    run_cli(tmp_path, "import", str(note))
+
+    process_result = run_cli(tmp_path, "process", "--target", str(target))
+
+    assert process_result.returncode == 0, process_result.stderr
+    run_id = parse_id(process_result.stdout, "run_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
+    assert "Kernel: deepagents" in process_result.stdout
+    assert "Using latest pending import contribution:" in process_result.stdout
+    assert "Waiting for DeepAgents model response" in process_result.stdout
+    assert '"kernel": "deepagents"' in (tmp_path / ".novi" / "runs" / run_id / "model_calls.jsonl").read_text(encoding="utf-8")
+    assert "Merged latest import." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
+
+
+def test_ingest_imports_processes_and_prints_review_commands(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {",
+                "            'messages': [FakeMessage('ingested document')],",
+                "            'files': {",
+                "                '/analysis_note.md': {'content': '# Analysis\\n\\nIngested.'},",
+                "                '/proposed.md': {'content': '# Target\\n\\nMerged from ingest.'},",
+                "            },",
+                "        }",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "target.md"
+    target.write_text("# Target\n\nExisting.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nAll in one workflow.\n", encoding="utf-8")
+
+    result = run_cli(tmp_path, "ingest", str(note), "--target", str(target))
+
+    assert result.returncode == 0, result.stderr
+    patch_contribution_id = parse_labeled_id(result.stdout, "Patch contribution:", "contrib_")
+    assert "Created session:" in result.stdout
+    assert "Imported:" in result.stdout
+    assert "Waiting for DeepAgents model response" in result.stdout
+    assert f"novi contribution inspect {patch_contribution_id}" in result.stdout
+    assert f"novi contribution check {patch_contribution_id}" in result.stdout
+    assert f"novi contribution accept {patch_contribution_id}" in result.stdout
+    assert "Merged from ingest." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
 
 
 def test_process_deepagents_accepts_json_output_protocol(tmp_path):
@@ -717,7 +822,7 @@ def test_process_deepagents_accepts_json_output_protocol(tmp_path):
 
     assert process_result.returncode == 0, process_result.stderr
     run_id = parse_id(process_result.stdout, "run_")
-    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    patch_contribution_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
     analysis_artifact_id = parse_id(process_result.stdout, "art_")
     run_dir = tmp_path / ".novi" / "runs" / run_id
 
