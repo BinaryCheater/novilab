@@ -134,6 +134,14 @@ novi task continue task_...
 novi task close task_...
 ```
 
+如果任务下存在 pending proposal，`task continue` 会停在 review gate，不会继续推进。按任务过滤 review/accept：
+
+```bash
+novi review --task task_... --check
+novi accept all --task task_...
+novi task continue task_...
+```
+
 导入文档时可以挂到已有任务上，让文档处理 run 成为同一个任务链路的一部分：
 
 ```bash

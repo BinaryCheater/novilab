@@ -352,6 +352,10 @@ def cmd_task(args):
         if len(args.task_args) < 2:
             raise RuntimeError("Usage: novi task continue <task_id>")
         task = load_task(root, args.task_args[1])
+        pending = _pending_contributions(root, task_id=task["id"])
+        if pending:
+            ids = ", ".join(item["id"] for item in pending)
+            raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
         session = load_session(root, task["session_id"]) if task.get("session_id") else active_session(root)
         agents = [load_agent(root, agent_id) for agent_id in args.agent]
         run = start_deterministic_run(
@@ -602,12 +606,15 @@ def _pending_memory(root):
     return [candidate for candidate in memory_candidates(root) if candidate.get("status") == "proposed"]
 
 
-def _pending_contributions(root):
-    return [contribution for contribution in list_contributions(root) if contribution.get("status") == "pending"]
+def _pending_contributions(root, task_id=None):
+    contributions = [contribution for contribution in list_contributions(root) if contribution.get("status") == "pending"]
+    if task_id:
+        contributions = [contribution for contribution in contributions if contribution.get("task_id") == task_id]
+    return contributions
 
 
-def _resolve_pending_contributions(root, selector):
-    pending = _pending_contributions(root)
+def _resolve_pending_contributions(root, selector, task_id=None):
+    pending = _pending_contributions(root, task_id=task_id)
     if selector == "all":
         return pending
     if selector == "latest":
@@ -629,7 +636,7 @@ def _accept_contribution(root, contribution_id):
 def cmd_review(args):
     root = Path.cwd()
     pending_memory = _pending_memory(root)
-    pending_contributions = _pending_contributions(root)
+    pending_contributions = _pending_contributions(root, task_id=args.task)
     summary = Table(title="Pending Review")
     summary.add_column("Queue")
     summary.add_column("Count")
@@ -679,7 +686,7 @@ def cmd_review(args):
 
 def cmd_accept(args):
     accepted = []
-    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector):
+    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector, task_id=args.task):
         record, message = _accept_contribution(Path.cwd(), contribution["id"])
         accepted.append(record["id"])
         print(f"Contribution {record['id']} {message}")
@@ -1097,10 +1104,12 @@ def build_parser():
 
     accept_parser = subparsers.add_parser("accept")
     accept_parser.add_argument("selector", nargs="?", default="latest")
+    accept_parser.add_argument("--task")
     accept_parser.set_defaults(func=cmd_accept)
 
     review_parser = subparsers.add_parser("review")
     review_parser.add_argument("--check", action="store_true")
+    review_parser.add_argument("--task")
     review_parser.set_defaults(func=cmd_review)
 
     artifact_parser = subparsers.add_parser("artifact")

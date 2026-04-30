@@ -980,6 +980,55 @@ def test_ingest_can_attach_processing_run_to_task(tmp_path):
     assert inspect.stdout.count("run_") >= 2
 
 
+def test_task_continue_blocks_on_pending_task_contributions(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "",
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(json.dumps({",
+                "            'analysis_markdown': '# Analysis\\n\\nTask proposal.',",
+                "            'proposals': [{'path': '.novi/knowledge/topics/task.md', 'rationale': 'task scoped', 'proposed_markdown': '# Task\\n\\nProposal.'}],",
+                "            'questions_for_human': []",
+                "        }))]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    task_id = parse_id(run_cli(tmp_path, "task", "Task gated by review", "--kernel", "simple").stdout, "task_")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nNeeds task patch.\n", encoding="utf-8")
+    ingest = run_cli(tmp_path, "ingest", str(note), "--task", task_id)
+    patch_id = parse_labeled_id(ingest.stdout, "Patch contribution:", "contrib_")
+
+    blocked = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    review = run_cli(tmp_path, "review", "--task", task_id, "--check")
+    accept = run_cli(tmp_path, "accept", "all", "--task", task_id)
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+
+    assert blocked.returncode == 1
+    assert "pending review" in blocked.stderr
+    assert patch_id in review.stdout
+    assert "would_apply" in review.stdout
+    assert accept.returncode == 0, accept.stderr
+    assert f"Contribution {patch_id} accepted and merged" in accept.stdout
+    assert continued.returncode == 0, continued.stderr
+    assert "Continued task:" in continued.stdout
+
+
 def test_ingest_without_agent_proposals_records_questions_for_human(tmp_path):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(

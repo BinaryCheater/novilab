@@ -431,6 +431,7 @@ def create_document_patch_contribution(
     source_refs,
     source_actor="agent",
     rationale=None,
+    task_id=None,
 ):
     base = require_workspace(root)
     target_path = Path(target).resolve()
@@ -464,6 +465,7 @@ def create_document_patch_contribution(
         "rationale_path": str(rationale_path) if rationale else None,
         "source_actor": source_actor,
         "source_refs": source_refs,
+        "task_id": task_id,
         "created_at": now,
         "updated_at": now,
     }
