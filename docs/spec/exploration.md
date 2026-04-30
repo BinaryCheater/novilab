@@ -178,23 +178,25 @@ import document
 -> preserve raw artifact and import contribution
 -> process with a selected skill/workflow and scoped agent
 -> write an analysis note artifact
--> optionally produce a document patch contribution for an explicit target
+-> optionally produce one or more document patch contributions
 -> review/check the patch
 -> accept applies the patch, reject preserves history, conflict blocks merge
 -> later runs consume accepted document state and trace its provenance
 ```
 
 The patch is an agent or worker output format, not the primary human input. A
-human may provide direct guidance and choose the target document, but the
-normal route is for the agent to generate the analysis note and patch.
+human may provide direct guidance and choose the target document. A provided
+target is a hard constraint. The normal route is for the agent to use the
+import, user hint, and provided library context to generate an analysis note
+and zero, one, or multiple patch candidates for review.
 
 Current working direction:
 
 - If a target document is provided, the processing run may create a patch
   contribution against that target.
-- If no target document is provided, the processing run should create an
-  analysis note and may suggest targets, but should not create an applicable
-  patch.
+- If no target document is provided, the processing run may propose merges into
+  existing documents, new documents, or questions for a human based on the
+  provided library context.
 - Patch targets are initially limited to the Markdown knowledge/document
   library, workflow records, and project-local skills.
 - Accepted specs, source code, tests, and project configuration are out of

@@ -1,6 +1,6 @@
 # 路线图草案
 
-状态：Draft
+状态：Draft, v0 direction accepted
 
 本路线图是开发检查用草案，不是交付承诺。它把 Novi 从本地核心闭环逐步扩展到 research、多人类 project collaboration、cowork、memory、UI、MCP 和 physical-AI modules。
 
@@ -106,67 +106,63 @@ Defer:
 - [ ] 不做 TUI/Web。
 - [ ] DeepAgents advanced streaming、checkpoint/resume、subagent mapping、built-in write/shell tool mapping 后置。
 - [ ] 不做复杂 permission matrix。
+- [ ] 不做完整 cowork/project participant system。
 
-## Phase 1.5：Integrated Exploration Track
+## Phase 1.5：可用的集成研究闭环
 
-目标：在不放弃 local-first 和 inspectable core 的前提下，一起探索 configurable agents、workflow iteration、contribution review 和 scientific memory。
+目标：从可用 run ledger 走向更顺手的 research control loop，让 agent profiles、workflow patches、layered knowledge/memory、contribution review 和 session memory 可以协同工作，同时不把 Novi 变成笨重平台。
 
-假设：这些基础能力互相依赖。Novi 不应把它们拆成互不相关的后置 phases，而应用一个小而完整的 loop 验证边界：
+这一 track 故意比单一 knowledge-import 切片更宽。假设是：agent authority、workflow iteration、collaboration 和 memory 会互相塑形，应该在一个集成闭环中一起验证，但每个部分仍然保持浅层、本地优先、可检查。
 
-```text
-import knowledge
--> compile/select agent profiles
--> generate or update workflow
--> execute scoped run
--> produce artifacts, workflow patches, and memory candidates
--> review/merge selected contributions
--> next run consumes accepted records
-```
-
-这一阶段应把“物理先验”等领域研究内容视为由 skill 定义、由文档库表达的知识，
-而不是 Novi core object type。Novi 负责围绕这些内容提供 processing、review、
-patch、lineage 和 context 机制。
+这一阶段应把“物理先验”等领域研究内容视为由 skill 定义、由文档库表达的知识，而不是 Novi core object type。Novi 负责围绕这些内容提供 processing、review、patch、lineage 和 context 机制。
 
 Entry check:
 
-- [ ] Phase 1 run ledger、artifact store、tool runtime 和 memory candidate flow 可用。
-- [ ] `exploration.md` 已明确探索对象和 EvoScientist/DeepAgents 参考差异。
-- [ ] Agent profile、workflow、contribution、memory 四个方向已各自定义一个最小可检查边界。
-- [ ] 已接受这不是完整 multi-agent platform，也不是完整 collaboration system。
+- [ ] Phase 1 local records 和 CLI inspection 可用。
+- [ ] `exploration.md` 已作为 exploration document 被审阅，而不是作为已接受实现范围。
+- [ ] DeepAgents 仍是 optional kernel，不拥有 Novi source-of-truth records。
+- [ ] ToolRuntime、artifacts、run events、model calls 和 memory candidates 仍是默认 audit boundary。
 
 Build check:
 
-- [ ] 能定义一个 project-local agent profile，包含 prompt refs、tool scope、permission scope、model profile 和 output contract。
-- [ ] 能把 agent profile 编译或映射到当前 kernel，而不把 kernel-specific representation 当成 source record。
-- [ ] 能记录一个 generated workflow 或 workflow artifact，包含 steps、success signals 和 iteration triggers。
-- [ ] Agent 可提出 workflow patch，但不能静默修改 accepted workflow。
-- [ ] 用户导入知识时形成 artifact 和 contribution，而不是直接进入 memory。
-- [ ] Scoped agent 可把 imported knowledge 处理成 analysis note；当用户提供明确 target 时，可生成针对 document library、workflow records 或 project-local skills 的 patch contribution。
-- [ ] 如果没有提供 patch target，document processing 可以建议 target，但不生成可 apply 的 patch。
-- [ ] Patch contribution 可 dry-run/check、accept 后 apply、reject、request changes，或在 apply 失败时标记 conflict 且不修改 target files。
-- [ ] Agent-generated patch contributions 必须携带来自 imports、runs、artifacts、analysis notes、accepted knowledge 或 worker bundles 的 source refs；human-authored changes 可以更宽松，但仍需 attribution。
-- [ ] Agent 可从导入知识和 run artifacts 中产生 claim/memory candidate。
-- [ ] Reviewer/user 可 accept/reject/request changes，并把 decision 写入 ledger。
-- [ ] Accepted memory 或 accepted workflow revision 可进入下一次 run 的 context pack。
-- [ ] Direct DeepAgents-like session 的输出可被导入为 artifacts/contributions，但不能绕过 review。
+- [ ] Agent profile records 可表达 authority level、prompt refs、tool scope、permission scope、model profile、interface mode、output schema 和 kernel binding hints。
+- [ ] Runs 能在 participant snapshots 中区分 user-level/collaborator agents、reviewer/auditor agents 和 executor agents。
+- [ ] Novi agent profile 可编译到所选 execution kernel，包括 DeepAgents subagent specs、tool wrappers、interrupt policy 和 backend route permissions。
+- [ ] Tool routing 可表达 allowlist/expose_to 语义，同时每个 external tool 仍必须表示为 Novi ToolSpec，包含 risk、policy 和 artifact behavior。
+- [ ] Layered Markdown knowledge vault 可被引用或初始化，raw inputs/excerpts、analysis notes、accepted conclusions、indexes 和 syntheses 作为不同层处理。
+- [ ] Agent/session mid-term memory 可作为 file-backed execution memory 保存，但不等于 accepted project knowledge。
+- [ ] Generated workflow 可保存为类似 `WorkflowSpec` 的记录，包含 steps、success signals、agent assignments、required artifacts、tool requirements 和 iteration triggers。
+- [ ] Agent-generated workflow、prompt、skill、document 或 memory changes 保存为 patches/contributions，而不是静默编辑。
+- [ ] 用户可以把 project knowledge、notes、paper snippets、prior experiment logs、links 或 direct agent-session exports 导入为 artifacts 和 contributions。
+- [ ] Imported knowledge 可由 scoped agent 处理为 analysis notes，并生成一个或多个针对 document library、workflow records 或 project-local skills 的 patch proposals。用户提供 target 时，它是 hard constraint，而不是默认路径。
+- [ ] 如果没有 patch target，document processing 可以基于提供的 library context 提出现有文档合并、新文档或需要 human 回答的问题。
+- [ ] Patch contributions 可 dry-run/check、accept/apply、reject、request changes，或在不修改 target files 的情况下标记 conflicted。
+- [ ] Agent-generated patch contributions 携带来自 imports、runs、artifacts、analysis notes、accepted knowledge 或 worker bundles 的 source refs；human-authored changes 即使 source refs 放宽也保持 attribution。
+- [ ] User、reviewer 或 policy-approved agent 可以 accept、reject 或 request changes 至少一个 contribution、memory candidate 或 workflow patch。
+- [ ] Accepted knowledge、memory 或 workflow revisions 可进入后续 context pack；rejected records 仍保留在 audit history。
+- [ ] `novi run inspect` 或等价 CLI trace 可解释从 import/guidance 到 run、artifacts、candidates、review decision 和 next-run context 的路径。
 
 Acceptance check:
 
-- [ ] 一次 demo 能展示 imported knowledge、agent profile、workflow patch、review decision 和 evidence-backed memory candidate 的完整链路。
-- [ ] 一次 demo 能展示 imported document 被处理成 analysis note 和针对明确 target 的 document patch，并通过 review 被 accept/reject。
-- [ ] `novi run inspect` 或等价 inspect surface 能解释每个状态变化来自谁、依据什么 evidence、是否被接受。
-- [ ] DeepAgents/LangGraph checkpoint 可用于 execution recovery，但 Novi run ledger 仍是 source of truth。
-- [ ] 新增对象没有迫使 Novi 立即实现 realtime collaboration、full workflow engine 或完整 knowledge graph。
+- [ ] 一个 run 可包含至少一个 user-level/collaborator agent 和一个 reviewer/auditor 或 executor agent，并具有不同 scopes。
+- [ ] 一个 imported raw input 或 link 可作为 source artifact 保存，并用于产出 analysis note 或 claim candidate。
+- [ ] 一个 imported document 可处理为 analysis note 和至少一个由 agent 选择或由用户约束的 reviewable document patch，然后被 accept 或 reject。
+- [ ] 一个 workflow 可被 draft、浅层执行、反思并 patch。
+- [ ] 一个 workflow patch、memory/knowledge contribution 或 prompt/skill suggestion 可通过 review 被 accept 或 reject。
+- [ ] 一个 evidence-backed conclusion 或 procedure 可写入，或被提议写入，layered Markdown knowledge vault，而不绕过 review。
+- [ ] 一个 session 可使用 file-backed mid-term memory 管理 context，但不把它当作 accepted project knowledge。
+- [ ] 后续 run 可消费 accepted knowledge/workflow records，同时 rejected contributions 仍在 audit history 可见。
 
 Defer:
 
-- [ ] 不做完整 team workspace。
-- [ ] 不做复杂 agent marketplace。
-- [ ] 不做实时多人编辑。
-- [ ] 不做完整 workflow scheduler。
+- [ ] Novi Core 内不做完整 standalone memory-manager project。
+- [ ] 不自动修改 accepted memory、workflows、prompts 或 skills。
+- [ ] 不为“物理先验”等项目特定研究概念建立 framework-native domain objects。
+- [ ] 不做完整 team permission admin。
+- [ ] 不做 realtime collaborative editing。
 - [ ] 不做完整 scientific knowledge graph。
-- [ ] 不为“物理先验”等项目特定研究概念建立框架内置对象。
-- [ ] 不把 EvoScientist 的 channel/memory/sandbox 设计整体照搬进 Novi。
+- [ ] 不开放 unrestricted DeepAgents filesystem、shell 或 memory built-ins。
+- [ ] 不做完整 web dashboard 或 channel collaboration UX。
 
 ## Phase 2：Research 与 Deep Research
 

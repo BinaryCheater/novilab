@@ -1,55 +1,77 @@
 # Novi Lab
 
-Novi Lab is a skill-first, session-aware control plane for autonomous research, coding, training, and physical-AI experiments.
+Novi Lab is a local-first, skill-first control plane for research work. It keeps sessions, runs, workflows, tools, artifacts, memory proposals, model calls, and review decisions in inspectable project-local records.
 
-The repository has started Phase 1 local-core implementation. The accepted working specs live under `docs/spec/`.
+Novi is not a replacement for Codex, Claude Code, DeepAgents, or other execution agents. Those systems can be used as workers or kernels. Novi owns the project state, audit trail, workflow records, tool policy, and review boundary.
 
 ## Start Here
 
-For practical CLI usage, read `docs/usage.md`.
+- [Chinese README](README.zh.md)
+- [User Guide](docs/guide/README.md)
+- [Quick Start](docs/guide/quick-start.md)
+- [Core Concepts](docs/guide/concepts.md)
+- [CLI Reference](docs/guide/cli.md)
+- [Workflow Model](docs/guide/workflows.md)
+- [Research Loop](docs/guide/research-loop.md)
+- [Document Ingest](docs/guide/document-ingest.md)
+- [Review And Artifacts](docs/guide/review-and-artifacts.md)
+- [Configuration](docs/guide/configuration.md)
+- [YAML Configuration](docs/guide/yaml-config.md)
+- [Troubleshooting](docs/guide/troubleshooting.md)
 
-Read the specs in this order:
+## Current Shape
 
-1. `docs/spec/README.md`
-2. `docs/spec/v0-scope.md`
-3. `docs/spec/architecture.md`
-4. `docs/spec/tooling-and-modules.md`
-5. `docs/spec/data-model.md`
-6. `docs/spec/cli.md`
-7. `docs/spec/open-questions.md`
+The current prototype can:
 
-Chinese draft specs are available under `docs/spec_zh/`.
+- initialize a local `.novi/` workspace;
+- configure OpenAI-compatible chat models;
+- run session-aware `ask`, `run`, and `task` commands;
+- execute through a deterministic local kernel or optional DeepAgents kernel;
+- archive prompt packs, model messages, model calls, tool calls, traces, and artifacts;
+- run resumable task workflows step by step;
+- ingest documents into reviewable proposals;
+- review, check, and accept document patch contributions.
 
-## Current Direction
+The most useful current loop is:
 
-V0 should validate a local-first loop:
-
-```text
+```bash
 novi init
-novi configure model siliconflow --model "..."
-novi skill list
-novi session create
-novi ask "..."
-novi run start research "..."
-novi run inspect <run_id>
-novi run output latest
-novi run trace latest
-novi memory review
+novi configure model siliconflow --model "..." --api-key "..."
+novi task "research objective" --steps 2
+novi trace latest
+novi output latest
+novi artifact list
 ```
 
-Core concepts are skills, sessions, runs, tools, memory, artifacts, policies, and explicit context packs.
+## Documentation Map
 
-## Repository Notes
+- `docs/guide/`: user-facing explanation and operating docs.
+- `docs/spec/`: accepted English working specs.
+- `docs/spec_zh/`: Chinese specs kept aligned with the English specs.
+- `docs/plans/`: implementation plans for specific development slices.
+- `docs/impl/`: implementation notes and development records.
 
-- Treat `novi_lab_repo_bootstrap_summary.md` as background material.
-- Keep accepted specs under `docs/spec/`; user-facing usage docs can live directly under `docs/`.
-- Implementation scaffolding is now allowed for approved Phase 1 work.
-- Use Superpowers skills for development work when available, especially planning, test-driven development, debugging, and verification-before-completion workflows.
-- Use `uv` to manage the Python environment and dependencies. Prefer commands such as `uv sync --extra dev` and `uv run pytest -v`.
+The root README is an orientation document. It should not be used as a development log.
 
-## GitHub Workflow
+## Development
 
-- Do not push directly to the remote `main` branch.
-- All GitHub changes intended for `main` must go through a pull request and be merged through GitHub.
-- Use development branches such as `dev` or `codex/<topic>` for pushed work.
-- Prefer creating a separate branch for each focused development task so review and rollback stay clear.
+Use `uv` for the Python environment:
+
+```bash
+uv sync --extra dev --extra deepagents
+uv run --extra dev pytest
+```
+
+During development, prefer the console script entrypoint:
+
+```bash
+uv run --extra dev --extra deepagents novi --help
+```
+
+## Repository Policy
+
+- Do not push directly to remote `main`.
+- Changes intended for `main` should go through a pull request.
+- Keep user-facing docs in `docs/guide/`.
+- Keep development notes in `docs/impl/`.
+- Keep specs in `docs/spec/` and `docs/spec_zh/` aligned when a spec change is explicitly approved.

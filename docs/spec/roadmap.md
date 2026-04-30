@@ -141,8 +141,8 @@ Build check:
 - [ ] A generated workflow can be saved as a `WorkflowSpec`-like record with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers.
 - [ ] Agent-generated workflow, prompt, skill, document, or memory changes are saved as patches or contributions, not silent edits.
 - [ ] A user can import project knowledge, notes, paper snippets, prior experiment logs, links, or direct agent-session exports as artifacts and contributions.
-- [ ] Imported knowledge can be processed by a scoped agent into analysis notes and, when the user provides an explicit target, patch contributions against the document library, workflow records, or project-local skills.
-- [ ] If no patch target is provided, document processing can suggest targets but does not create an applicable patch.
+- [ ] Imported knowledge can be processed by a scoped agent into analysis notes and one or more patch proposals against the document library, workflow records, or project-local skills. A user-provided target is a hard constraint, not the default path.
+- [ ] If no patch target is provided, document processing can inspect the provided library context and propose existing-target merges, new documents, or questions for a human.
 - [ ] Patch contributions can be checked with a dry-run, accepted to apply, rejected, requested for changes, or marked conflicted without modifying target files.
 - [ ] Agent-generated patch contributions carry source refs from imports, runs, artifacts, analysis notes, accepted knowledge, or worker bundles; human-authored changes remain attributable even when source refs are relaxed.
 - [ ] A user, reviewer, or policy-approved agent can accept, reject, or request changes on at least one contribution, memory candidate, or workflow patch.
@@ -153,7 +153,7 @@ Acceptance check:
 
 - [ ] One run can involve at least one user-level/collaborator agent and one reviewer/auditor or executor agent with different scopes.
 - [ ] One imported raw input or link can be preserved as a source artifact and used to produce an analysis note or claim candidate.
-- [ ] One imported document can be processed into an analysis note and a reviewable document patch for an explicit target, then accepted or rejected.
+- [ ] One imported document can be processed into an analysis note and at least one reviewable document patch selected by the agent or constrained by the user, then accepted or rejected.
 - [ ] One workflow can be drafted, executed at a shallow level, reflected on, and patched.
 - [ ] One workflow patch, memory/knowledge contribution, or prompt/skill suggestion can be accepted or rejected through review.
 - [ ] One evidence-backed conclusion or procedure can be written to, or proposed for, a layered Markdown knowledge vault without bypassing review.

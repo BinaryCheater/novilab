@@ -124,22 +124,21 @@ import document
 -> preserve raw artifact and import contribution
 -> process with a selected skill/workflow and scoped agent
 -> write an analysis note artifact
--> optionally produce a document patch contribution for an explicit target
+-> optionally produce one or more document patch contributions
 -> review/check the patch
 -> accept applies the patch, reject preserves history, conflict blocks merge
 -> later runs consume accepted document state and trace its provenance
 ```
 
 Patch 是 agent 或 worker 的输出格式，不是主要的人类输入格式。人类可以提供
-guidance 并选择 target document，但常规路线应是 agent 生成 analysis note 和
-patch。
+guidance 并选择 target document；提供 target 时它是 hard constraint。常规路线应是 agent 基于 import、用户 hint 和提供的 library context，生成 analysis note 和零个、一个或多个 patch candidates 供 review。
 
 当前工作方向：
 
 - 如果提供 target document，processing run 可以针对该 target 创建 patch
   contribution。
-- 如果没有提供 target document，processing run 应创建 analysis note，并可以
-  建议 target，但不应创建可 apply 的 patch。
+- 如果没有提供 target document，processing run 可以基于提供的 library context
+  提出现有文档合并、新文档或需要 human 回答的问题。
 - Patch target 第一版限制在 Markdown knowledge/document library、workflow
   records 和 project-local skills。
 - Accepted specs、source code、tests 和 project configuration 不走这条 patch
