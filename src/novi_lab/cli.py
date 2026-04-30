@@ -15,12 +15,15 @@ from .agents import (
     remove_agent_list_value,
     set_agent_model,
 )
+from .processing import process_imported_document
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
     accepted_knowledge,
+    apply_patch_contribution,
     active_session,
     append_session_message,
+    check_patch_contribution,
     create_session,
     decide_memory_candidate,
     decide_contribution,
@@ -39,6 +42,7 @@ from .store import (
     project_config,
     read_jsonl,
     read_yaml,
+    request_changes_contribution,
     require_workspace,
     update_project_config,
 )
@@ -499,7 +503,7 @@ def cmd_review(args):
 
     if pending_contributions:
         contribution_table = Table(title="Contributions")
-        contribution_table.add_column("ID")
+        contribution_table.add_column("ID", no_wrap=True)
         contribution_table.add_column("Status")
         contribution_table.add_column("Type")
         contribution_table.add_column("Title")
@@ -519,6 +523,23 @@ def cmd_import(args):
     print(f"Imported {contribution['title']}")
     print(f"Contribution: {contribution['id']}")
     print(f"Artifact: {artifact['id']}")
+    return 0
+
+
+def cmd_process(args):
+    result = process_imported_document(
+        Path.cwd(),
+        args.contribution_id,
+        workflow=args.workflow,
+        target=args.target,
+        kernel=args.kernel,
+    )
+    print(f"Run: {result['run']['id']}")
+    print(f"Analysis artifact: {result['analysis_artifact']['id']}")
+    if result["patch_contribution"]:
+        print(f"Patch contribution: {result['patch_contribution']['id']}")
+    else:
+        print("No patch contribution created")
     return 0
 
 
@@ -613,6 +634,25 @@ def cmd_contribution_inspect(args):
     print(f"Target: {contribution.get('target', '-')}")
     print(f"Source: {contribution.get('source', '-')}")
     print(f"Source artifact: {contribution.get('artifact_id', '-')}")
+    print(f"Source actor: {contribution.get('source_actor', '-')}")
+    if contribution.get("source_refs"):
+        print("Source refs:")
+        for ref in contribution.get("source_refs", []):
+            print(f"- {ref.get('type')}: {ref.get('id')}")
+    if contribution.get("patch_path"):
+        print(f"Patch: {contribution.get('patch_path')}")
+    if contribution.get("check_result"):
+        print(f"Check: {contribution['check_result'].get('status')}")
+    if contribution.get("merged_at"):
+        print(f"Merged at: {contribution.get('merged_at')}")
+    if contribution.get("changed_files"):
+        print("Changed files:")
+        for changed_file in contribution.get("changed_files", []):
+            print(f"- {changed_file}")
+    if contribution.get("conflict_reason"):
+        print(f"Conflict reason: {contribution.get('conflict_reason')}")
+    if contribution.get("review_comment"):
+        print(f"Review comment: {contribution.get('review_comment')}")
     return 0
 
 
@@ -623,10 +663,32 @@ def cmd_contribution_reject(args):
 
 
 def cmd_contribution_accept(args):
+    contribution, _ = load_contribution(Path.cwd(), args.contribution_id)
+    if contribution.get("type") == "document_patch":
+        contribution = apply_patch_contribution(Path.cwd(), args.contribution_id)
+        print(f"Contribution {contribution['id']} accepted and merged")
+        return 0
     contribution = decide_contribution(Path.cwd(), args.contribution_id, "accepted")
     print(f"Contribution {contribution['id']} accepted")
     if contribution.get("accepted_knowledge_path"):
         print(f"Accepted knowledge: {contribution['accepted_knowledge_path']}")
+    return 0
+
+
+def cmd_contribution_check(args):
+    result = check_patch_contribution(Path.cwd(), args.contribution_id)
+    if result["status"] == "would_apply":
+        print(f"Contribution {args.contribution_id} would apply")
+        for changed_file in result.get("changed_files", []):
+            print(f"- {changed_file}")
+        return 0
+    print(f"Contribution {args.contribution_id} conflict: {result.get('reason', '-')}")
+    return 1
+
+
+def cmd_contribution_request_changes(args):
+    contribution = request_changes_contribution(Path.cwd(), args.contribution_id, args.reason)
+    print(f"Contribution {contribution['id']} changes requested")
     return 0
 
 
@@ -768,6 +830,13 @@ def build_parser():
     import_parser = subparsers.add_parser("import")
     import_parser.add_argument("source")
     import_parser.set_defaults(func=cmd_import)
+
+    process_parser = subparsers.add_parser("process")
+    process_parser.add_argument("contribution_id")
+    process_parser.add_argument("--workflow", default="document-merge")
+    process_parser.add_argument("--target")
+    process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="simple")
+    process_parser.set_defaults(func=cmd_process)
 
     review_parser = subparsers.add_parser("review")
     review_parser.set_defaults(func=cmd_review)
@@ -914,12 +983,19 @@ def build_parser():
     contribution_inspect = contribution_sub.add_parser("inspect")
     contribution_inspect.add_argument("contribution_id")
     contribution_inspect.set_defaults(func=cmd_contribution_inspect)
+    contribution_check = contribution_sub.add_parser("check")
+    contribution_check.add_argument("contribution_id")
+    contribution_check.set_defaults(func=cmd_contribution_check)
     contribution_reject = contribution_sub.add_parser("reject")
     contribution_reject.add_argument("contribution_id")
     contribution_reject.set_defaults(func=cmd_contribution_reject)
     contribution_accept = contribution_sub.add_parser("accept")
     contribution_accept.add_argument("contribution_id")
     contribution_accept.set_defaults(func=cmd_contribution_accept)
+    contribution_request_changes = contribution_sub.add_parser("request-changes")
+    contribution_request_changes.add_argument("contribution_id")
+    contribution_request_changes.add_argument("--reason", required=True)
+    contribution_request_changes.set_defaults(func=cmd_contribution_request_changes)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_sub = doctor_parser.add_subparsers(dest="doctor_command", required=True)

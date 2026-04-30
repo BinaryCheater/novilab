@@ -388,6 +388,173 @@ def test_contribution_accept_writes_reviewed_knowledge_record(tmp_path):
     assert contribution_id not in review_result.stdout
 
 
+def test_process_import_with_target_creates_analysis_note_and_patch_contribution(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "document processing")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "physical-priors.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Physical Priors\n\nExisting notes.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nNew idea from collaborator.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+    source_artifact_id = parse_id(import_result.stdout, "art_")
+
+    process_result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(target),
+    )
+
+    assert process_result.returncode == 0, process_result.stderr
+    run_id = parse_id(process_result.stdout, "run_")
+    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    analysis_artifact_id = parse_id(process_result.stdout, "art_")
+    patch_contribution = tmp_path / ".novi" / "contributions" / f"{patch_contribution_id}.yaml"
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+
+    assert patch_contribution.exists()
+    text = patch_contribution.read_text()
+    assert "type: document_patch" in text
+    assert f"id: {source_artifact_id}" in text
+    assert f"id: {analysis_artifact_id}" in text
+    assert "source_actor: agent" in text
+    assert (run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").exists()
+    assert (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.patch").exists()
+    assert patch_contribution_id in run_cli(tmp_path, "review").stdout
+
+
+def test_contribution_check_and_accept_apply_document_patch(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "document patch apply")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "physical-priors.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Physical Priors\n\nExisting notes.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nNew idea from collaborator.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+    process_result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(target),
+    )
+    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+
+    check_result = run_cli(tmp_path, "contribution", "check", patch_contribution_id)
+    accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)
+    inspect_result = run_cli(tmp_path, "contribution", "inspect", patch_contribution_id)
+
+    assert check_result.returncode == 0, check_result.stderr
+    assert "would apply" in check_result.stdout
+    assert accept_result.returncode == 0, accept_result.stderr
+    assert "merged" in accept_result.stdout
+    assert "New idea from collaborator." in target.read_text(encoding="utf-8")
+    assert "Status: accepted" in inspect_result.stdout
+    assert "Merged at:" in inspect_result.stdout
+    assert "Changed files:" in inspect_result.stdout
+
+
+def test_contribution_accept_marks_conflict_when_target_changed(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "document patch conflict")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "physical-priors.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Physical Priors\n\nExisting notes.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nConflicting idea.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+    process_result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(target),
+    )
+    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    target.write_text("# Physical Priors\n\nHuman changed this file.\n", encoding="utf-8")
+
+    accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)
+    inspect_result = run_cli(tmp_path, "contribution", "inspect", patch_contribution_id)
+
+    assert accept_result.returncode == 1
+    assert "conflict" in accept_result.stderr
+    assert "Conflicting idea." not in target.read_text(encoding="utf-8")
+    assert "Status: conflict" in inspect_result.stdout
+    assert "Conflict reason:" in inspect_result.stdout
+
+
+def test_process_import_without_target_only_creates_analysis_note(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "document processing no target")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nNeeds routing.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    process_result = run_cli(tmp_path, "process", import_contribution_id, "--workflow", "document-merge")
+
+    assert process_result.returncode == 0, process_result.stderr
+    run_id = parse_id(process_result.stdout, "run_")
+    analysis_artifact_id = parse_id(process_result.stdout, "art_")
+    assert "No patch contribution created" in process_result.stdout
+    assert (tmp_path / ".novi" / "runs" / run_id / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").exists()
+    assert "document_patch" not in run_cli(tmp_path, "contribution", "list").stdout
+
+
+def test_process_rejects_patch_target_outside_allowed_project_state(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "document processing blocked target")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nShould not patch source files.\n", encoding="utf-8")
+    source_file = tmp_path / "src" / "unsafe.py"
+    source_file.parent.mkdir()
+    source_file.write_text("print('do not patch')\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(source_file),
+    )
+
+    assert result.returncode == 1
+    assert "Patch target must be under .novi/knowledge" in result.stderr
+    assert source_file.read_text(encoding="utf-8") == "print('do not patch')\n"
+
+
+def test_contribution_request_changes_records_reason(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    result = run_cli(tmp_path, "contribution", "request-changes", contribution_id, "--reason", "Need clearer source links.")
+    inspect_result = run_cli(tmp_path, "contribution", "inspect", contribution_id)
+
+    assert result.returncode == 0, result.stderr
+    assert "changes requested" in result.stdout
+    assert "Status: changes_requested" in inspect_result.stdout
+    assert "Need clearer source links." in inspect_result.stdout
+
+
 def test_run_start_creates_auditable_deterministic_records(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "physical-ai literature scan")
