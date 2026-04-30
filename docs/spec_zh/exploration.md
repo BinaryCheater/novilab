@@ -47,6 +47,14 @@ Novi 当前已经接受的方向是 skill-first、session-aware control plane。
 - 多用户协作与内容合并：用户应该能导入知识、指导 agents、review outputs、直接使用 DeepAgents-like surfaces，并把结果 merge 回共享 project state；
 - 可靠自迭代科学记忆：长期 memory 应支持科学发现，而不只是 personalization 或 chat continuity。
 
+澄清：
+
+Novi 不应把“物理先验”这类领域研究概念编码成 core framework object。
+领域概念应属于 project skills 和 Markdown 文档库。Novi 的职责是保留
+provenance，用受限 agent 或 worker 运行相关 skill，记录 artifacts 和
+proposed changes，在共享状态变化前要求 review，并让 accepted records 能被
+后续 run 使用。
+
 ## 功能探索
 
 ### 可配置 Multi-Agent 工作
@@ -100,6 +108,53 @@ EvoScientist 显示 prompt-driven workflows 可以非常有效且灵活。但当
 
 Workflow 应先从轻量 records 或 artifacts 开始，再通过 review promotion 进入更持久的状态。不要先建重型 workflow engine。第一要求是 workflow creation、execution、reflection 和 patching 可检查。
 
+### Skill 驱动的文档处理与 Patch 合并
+
+Open:
+
+一个核心用户流程是：人类协作者导入 document、note、log 或 direct
+agent-session export，其中内容可能清晰，也可能只是模糊观点或片段。用户不应
+被要求手写 patch。Novi 应先把导入记录为 raw material，然后允许 scoped agent
+基于 selected skills 处理它，并产出可 review 的结果。
+
+第一版有用处理循环是：
+
+```text
+import document
+-> preserve raw artifact and import contribution
+-> process with a selected skill/workflow and scoped agent
+-> write an analysis note artifact
+-> optionally produce a document patch contribution for an explicit target
+-> review/check the patch
+-> accept applies the patch, reject preserves history, conflict blocks merge
+-> later runs consume accepted document state and trace its provenance
+```
+
+Patch 是 agent 或 worker 的输出格式，不是主要的人类输入格式。人类可以提供
+guidance 并选择 target document，但常规路线应是 agent 生成 analysis note 和
+patch。
+
+当前工作方向：
+
+- 如果提供 target document，processing run 可以针对该 target 创建 patch
+  contribution。
+- 如果没有提供 target document，processing run 应创建 analysis note，并可以
+  建议 target，但不应创建可 apply 的 patch。
+- Patch target 第一版限制在 Markdown knowledge/document library、workflow
+  records 和 project-local skills。
+- Accepted specs、source code、tests 和 project configuration 不走这条 patch
+  path。
+- Agent-generated patches 必须携带来自 import、run、analysis artifact、
+  accepted knowledge 或 worker bundle 的 source refs。Human-authored changes
+  可以更宽松，但仍必须能 attribution。
+- Accept patch 前先做 dry-run/check，只有 target scope 和 patch 有效时才
+  apply，并记录 changed files 和 merge metadata。
+- 如果 patch apply 失败，Novi 不修改 target files；它把 contribution 标记为
+  conflict，并可 assign 给 merge/review agent，让其提出 revised patch 或
+  review recommendation。
+
+这样可以把领域研究内容留在 skills 和 documents 中，同时让 merge path 可审计。
+
 ### 多用户协作与内容合并
 
 Open:
@@ -123,6 +178,10 @@ Open:
 当前工作方向：
 
 先做 contribution records 和 review decisions，而不是实时协同编辑。第一版 merge unit 可以较粗：imported artifact、extracted claim、memory candidate、workflow patch、skill patch 或 run summary patch。
+
+对于文档库和 skill 的迭代，首选 merge unit 是 patch contribution。Agents
+可以提出对 documents、workflows 或 project-local skills 的 patches，
+但 accepted files 只有在 review 和 patch check 成功后才会被更新。
 
 ### 直接 Agent 工作与用户指导
 
@@ -177,6 +236,11 @@ Markdown memory 易检查、易编辑，但对 contradiction、supersession、re
 当前工作方向：
 
 从 evidence-backed memory candidates 和 accepted memory records 开始。最小持久单元应是带 type、scope、evidence refs、confidence、review decision 和 supersession state 的 claim 或 procedure。Markdown 可以继续作为可读表面，但底层 record 必须保留 provenance。
+
+领域特定的科学构造不应全部成为 Novi object types。如果项目想维护“物理先验”
+这样的主题，可以通过 skill-defined methods 和 Markdown documents 来汇总、
+链接、修订相关知识。Novi 应追踪围绕这些工作的 documents、patches、
+artifacts、review decisions、memory candidates 和 lineage。
 
 ## EvoScientist 在 DeepAgents 上实际构建了什么
 

@@ -123,6 +123,10 @@ import knowledge
 -> next run consumes accepted records
 ```
 
+这一阶段应把“物理先验”等领域研究内容视为由 skill 定义、由文档库表达的知识，
+而不是 Novi core object type。Novi 负责围绕这些内容提供 processing、review、
+patch、lineage 和 context 机制。
+
 Entry check:
 
 - [ ] Phase 1 run ledger、artifact store、tool runtime 和 memory candidate flow 可用。
@@ -137,6 +141,10 @@ Build check:
 - [ ] 能记录一个 generated workflow 或 workflow artifact，包含 steps、success signals 和 iteration triggers。
 - [ ] Agent 可提出 workflow patch，但不能静默修改 accepted workflow。
 - [ ] 用户导入知识时形成 artifact 和 contribution，而不是直接进入 memory。
+- [ ] Scoped agent 可把 imported knowledge 处理成 analysis note；当用户提供明确 target 时，可生成针对 document library、workflow records 或 project-local skills 的 patch contribution。
+- [ ] 如果没有提供 patch target，document processing 可以建议 target，但不生成可 apply 的 patch。
+- [ ] Patch contribution 可 dry-run/check、accept 后 apply、reject、request changes，或在 apply 失败时标记 conflict 且不修改 target files。
+- [ ] Agent-generated patch contributions 必须携带来自 imports、runs、artifacts、analysis notes、accepted knowledge 或 worker bundles 的 source refs；human-authored changes 可以更宽松，但仍需 attribution。
 - [ ] Agent 可从导入知识和 run artifacts 中产生 claim/memory candidate。
 - [ ] Reviewer/user 可 accept/reject/request changes，并把 decision 写入 ledger。
 - [ ] Accepted memory 或 accepted workflow revision 可进入下一次 run 的 context pack。
@@ -145,6 +153,7 @@ Build check:
 Acceptance check:
 
 - [ ] 一次 demo 能展示 imported knowledge、agent profile、workflow patch、review decision 和 evidence-backed memory candidate 的完整链路。
+- [ ] 一次 demo 能展示 imported document 被处理成 analysis note 和针对明确 target 的 document patch，并通过 review 被 accept/reject。
 - [ ] `novi run inspect` 或等价 inspect surface 能解释每个状态变化来自谁、依据什么 evidence、是否被接受。
 - [ ] DeepAgents/LangGraph checkpoint 可用于 execution recovery，但 Novi run ledger 仍是 source of truth。
 - [ ] 新增对象没有迫使 Novi 立即实现 realtime collaboration、full workflow engine 或完整 knowledge graph。
@@ -156,6 +165,7 @@ Defer:
 - [ ] 不做实时多人编辑。
 - [ ] 不做完整 workflow scheduler。
 - [ ] 不做完整 scientific knowledge graph。
+- [ ] 不为“物理先验”等项目特定研究概念建立框架内置对象。
 - [ ] 不把 EvoScientist 的 channel/memory/sandbox 设计整体照搬进 Novi。
 
 ## Phase 2：Research 与 Deep Research

@@ -77,6 +77,15 @@ The user intent appears to be the broader layer:
 - reliable self-iterating scientific memory: durable memory should support
   scientific discovery, not just personalization or chat continuity.
 
+Clarification:
+
+Novi should not encode domain-specific research concepts such as "physical
+priors" as core framework objects. Domain concepts belong in project skills and
+the Markdown document library. Novi's responsibility is to preserve provenance,
+run the relevant skills through scoped agents or workers, record artifacts and
+proposed changes, require review before shared state changes, and make accepted
+records available to later runs.
+
 ## Functional Exploration
 
 ### Configurable Multi-Agent Work
@@ -152,6 +161,56 @@ Workflow should start as lightweight records or artifacts promoted through
 review. Do not build a heavy workflow engine first. The first requirement is
 that workflow creation, execution, reflection, and patching are inspectable.
 
+### Skill-Driven Document Processing And Patch Merge
+
+Open:
+
+A core user flow is that a human collaborator imports a document, note, log, or
+direct agent-session export whose contents may be clear, partial, or
+ambiguous. The user should not have to hand-write a patch. Instead, Novi should
+record the import as raw material, then allow a scoped agent to process it with
+the selected skills and produce reviewable outputs.
+
+The first useful processing loop is:
+
+```text
+import document
+-> preserve raw artifact and import contribution
+-> process with a selected skill/workflow and scoped agent
+-> write an analysis note artifact
+-> optionally produce a document patch contribution for an explicit target
+-> review/check the patch
+-> accept applies the patch, reject preserves history, conflict blocks merge
+-> later runs consume accepted document state and trace its provenance
+```
+
+The patch is an agent or worker output format, not the primary human input. A
+human may provide direct guidance and choose the target document, but the
+normal route is for the agent to generate the analysis note and patch.
+
+Current working direction:
+
+- If a target document is provided, the processing run may create a patch
+  contribution against that target.
+- If no target document is provided, the processing run should create an
+  analysis note and may suggest targets, but should not create an applicable
+  patch.
+- Patch targets are initially limited to the Markdown knowledge/document
+  library, workflow records, and project-local skills.
+- Accepted specs, source code, tests, and project configuration are out of
+  scope for this patch path.
+- Agent-generated patches must carry source refs from the import, run, analysis
+  artifact, accepted knowledge, or worker bundle. Human-authored changes can be
+  more permissive, but must still be attributable.
+- Accepting a patch performs a dry-run/check first, applies only if the target
+  scope and patch are valid, and records changed files and merge metadata.
+- If patch application fails, Novi does not modify target files; it marks the
+  contribution as conflicted and may assign it to a merge/review agent to
+  propose a revised patch or review recommendation.
+
+This keeps domain research content in skills and documents while making the
+merge path auditable.
+
 ### Multi-User Collaboration And Content Merge
 
 Open:
@@ -184,6 +243,11 @@ Current working direction:
 Start with contribution records and review decisions, not realtime editing. The
 merge unit can be coarse at first: imported artifact, extracted claim, memory
 candidate, workflow patch, skill patch, or run summary patch.
+
+For document-library and skill evolution, the preferred merge unit is a patch
+contribution. Agents may propose patches to documents, workflows, or
+project-local skills, but accepted files are updated only after review and a
+successful patch check.
 
 ### Direct Agent Work And User Guidance
 
@@ -251,6 +315,12 @@ Start with evidence-backed memory candidates and accepted memory records. The
 minimum durable unit should be a claim or procedure with type, scope, evidence
 refs, confidence, review decision, and supersession state. Markdown can remain
 the readable surface, but the underlying record should preserve provenance.
+
+Domain-specific scientific constructs should not all become Novi object types.
+When a project wants to maintain a topic such as physical priors, it can do so
+through skill-defined methods and Markdown documents that summarize, link, and
+revise the relevant knowledge. Novi should track the documents, patches,
+artifacts, review decisions, memory candidates, and lineage around that work.
 
 ### Layered Knowledge And Memory Boundaries
 

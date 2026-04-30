@@ -118,6 +118,11 @@ Goal: move from a usable run ledger to a smoother research control loop where ag
 
 This track is intentionally broader than a single knowledge-import slice. The hypothesis is that agent authority, workflow iteration, collaboration, and memory shape each other and should be validated together, while each remains shallow, local-first, and inspectable.
 
+This phase should treat domain-specific research content, including concepts
+such as physical priors, as skill-defined knowledge expressed in the document
+library rather than as Novi core object types. Novi should provide the
+processing, review, patch, lineage, and context machinery around that content.
+
 Entry check:
 
 - [ ] Phase 1 local records and CLI inspection are usable.
@@ -134,9 +139,12 @@ Build check:
 - [ ] A layered Markdown knowledge vault can be referenced or initialized, with raw inputs/excerpts, analysis notes, accepted conclusions, indexes, and syntheses treated as distinct layers.
 - [ ] Agent/session mid-term memory can be stored as file-backed execution memory without becoming accepted project knowledge.
 - [ ] A generated workflow can be saved as a `WorkflowSpec`-like record with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers.
-- [ ] Agent-generated workflow, prompt, skill, or memory changes are saved as patches or contributions, not silent edits.
+- [ ] Agent-generated workflow, prompt, skill, document, or memory changes are saved as patches or contributions, not silent edits.
 - [ ] A user can import project knowledge, notes, paper snippets, prior experiment logs, links, or direct agent-session exports as artifacts and contributions.
-- [ ] Imported knowledge can be processed into claim candidates, memory candidates, workflow patches, prompt/skill suggestions, or analysis notes.
+- [ ] Imported knowledge can be processed by a scoped agent into analysis notes and, when the user provides an explicit target, patch contributions against the document library, workflow records, or project-local skills.
+- [ ] If no patch target is provided, document processing can suggest targets but does not create an applicable patch.
+- [ ] Patch contributions can be checked with a dry-run, accepted to apply, rejected, requested for changes, or marked conflicted without modifying target files.
+- [ ] Agent-generated patch contributions carry source refs from imports, runs, artifacts, analysis notes, accepted knowledge, or worker bundles; human-authored changes remain attributable even when source refs are relaxed.
 - [ ] A user, reviewer, or policy-approved agent can accept, reject, or request changes on at least one contribution, memory candidate, or workflow patch.
 - [ ] Accepted knowledge, memory, or workflow revisions can be included in a later context pack, while rejected records remain visible in audit history.
 - [ ] `novi run inspect` or an equivalent CLI trace can explain the path from import/guidance to run, artifacts, candidates, review decision, and next-run context.
@@ -145,6 +153,7 @@ Acceptance check:
 
 - [ ] One run can involve at least one user-level/collaborator agent and one reviewer/auditor or executor agent with different scopes.
 - [ ] One imported raw input or link can be preserved as a source artifact and used to produce an analysis note or claim candidate.
+- [ ] One imported document can be processed into an analysis note and a reviewable document patch for an explicit target, then accepted or rejected.
 - [ ] One workflow can be drafted, executed at a shallow level, reflected on, and patched.
 - [ ] One workflow patch, memory/knowledge contribution, or prompt/skill suggestion can be accepted or rejected through review.
 - [ ] One evidence-backed conclusion or procedure can be written to, or proposed for, a layered Markdown knowledge vault without bypassing review.
@@ -155,6 +164,7 @@ Defer:
 
 - [ ] No full standalone memory-manager project inside Novi Core.
 - [ ] No automatic mutation of accepted memory, workflows, prompts, or skills.
+- [ ] No framework-native domain objects for project-specific research concepts such as physical priors.
 - [ ] No full team permission admin.
 - [ ] No realtime collaborative editing.
 - [ ] No full scientific knowledge graph.
