@@ -47,10 +47,11 @@ novi workflow show ...
 - Added `novi task list`, `novi task inspect <task_id>`, `novi task continue <task_id>`, and `novi task close <task_id>`.
 - Added `--task task_...` to `ingest`/`process` so document processing runs can attach to an existing task.
 - Added task-scoped review gates: `novi task continue <task_id>` blocks when pending task contributions exist, while `novi review --task <task_id> --check` and `novi accept all --task <task_id>` operate on that task's queue.
+- Added deterministic reviewer policy via `novi review --agent`: clean, scoped, source-linked document patches are marked `safe_to_accept`; conflicts and raw imports are left for humans. `novi accept --reviewed [--task task_...]` accepts only safe reviewed contributions.
 
 ## Still Open
 
-- Agent reviewer: a reviewer agent should be able to pre-check proposals and mark which are safe for automatic acceptance.
+- Agent reviewer: deterministic reviewer policy exists. A later LLM reviewer can explain semantic risks, source quality, and whether a proposal fits project conventions.
 - Batch policy: `accept all --task` is scoped, but still trusts the human command. A future policy layer should distinguish safe patch batches from knowledge imports or risky changes.
 - Task loop: `novi task continue` can append runs to a task, but it is still manually invoked. It should grow into a policy-controlled loop with checkpoints, generated artifacts, follow-up ingest, and reflection proposals.
 - Tool-use library integration: ingest currently gives a bounded library context in the prompt. Later it should expose controlled search/read tools over `.novi/knowledge`.

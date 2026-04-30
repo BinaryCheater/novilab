@@ -1029,6 +1029,89 @@ def test_task_continue_blocks_on_pending_task_contributions(tmp_path):
     assert "Continued task:" in continued.stdout
 
 
+def test_review_agent_marks_safe_and_accept_reviewed(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "",
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(json.dumps({",
+                "            'analysis_markdown': '# Analysis\\n\\nSafe proposal.',",
+                "            'proposals': [{'path': '.novi/knowledge/topics/reviewed.md', 'rationale': 'safe', 'proposed_markdown': '# Reviewed\\n\\nSafe.'}],",
+                "            'questions_for_human': []",
+                "        }))]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    task_id = parse_id(run_cli(tmp_path, "task", "Reviewed task", "--kernel", "simple").stdout, "task_")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nReview me.\n", encoding="utf-8")
+    ingest = run_cli(tmp_path, "ingest", str(note), "--task", task_id)
+    patch_id = parse_labeled_id(ingest.stdout, "Patch contribution:", "contrib_")
+
+    review = run_cli(tmp_path, "review", "--task", task_id, "--check", "--agent")
+    inspect = run_cli(tmp_path, "contribution", "inspect", patch_id)
+    accept = run_cli(tmp_path, "accept", "--reviewed", "--task", task_id)
+
+    assert review.returncode == 0, review.stderr
+    assert "safe_to_accept" in review.stdout
+    assert "Reviewer decision: safe_to_accept" in inspect.stdout
+    assert accept.returncode == 0, accept.stderr
+    assert f"Contribution {patch_id} accepted and merged" in accept.stdout
+
+
+def test_accept_reviewed_skips_unreviewed_pending(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nUnreviewed.\n", encoding="utf-8")
+    contribution_id = parse_id(run_cli(tmp_path, "import", str(note)).stdout, "contrib_")
+
+    accept = run_cli(tmp_path, "accept", "--reviewed")
+    review = run_cli(tmp_path, "review")
+
+    assert accept.returncode == 0, accept.stderr
+    assert "No reviewed safe contributions to accept." in accept.stdout
+    assert contribution_id in review.stdout
+
+
+def test_review_agent_marks_conflict_as_not_safe(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "conflict reviewer")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "conflict.md"
+    target.write_text("# Conflict\n\nBefore.\n", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nChange.\n", encoding="utf-8")
+    import_id = parse_id(run_cli(tmp_path, "import", str(note)).stdout, "contrib_")
+    process = run_cli(tmp_path, "process", import_id, "--target", str(target), "--kernel", "simple")
+    patch_id = parse_labeled_id(process.stdout, "Patch contribution:", "contrib_")
+    target.write_text("# Conflict\n\nHuman changed.\n", encoding="utf-8")
+
+    review = run_cli(tmp_path, "review", "--check", "--agent")
+    inspect = run_cli(tmp_path, "contribution", "inspect", patch_id)
+    accept = run_cli(tmp_path, "accept", "--reviewed")
+
+    assert review.returncode == 0, review.stderr
+    assert "conflict" in review.stdout
+    assert "Reviewer decision: conflict" in inspect.stdout
+    assert accept.returncode == 0, accept.stderr
+    assert "No reviewed safe contributions to accept." in accept.stdout
+    assert "Change." not in target.read_text(encoding="utf-8")
+
+
 def test_ingest_without_agent_proposals_records_questions_for_human(tmp_path):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(

@@ -499,6 +499,33 @@ def check_patch_contribution(root, contribution_id, write_result=True):
     return result
 
 
+def agent_review_contribution(root, contribution_id, reviewer="agent_auditor"):
+    contribution, path = load_contribution(root, contribution_id)
+    now = utc_now()
+    if contribution.get("type") == "document_patch":
+        check = check_patch_contribution(root, contribution_id)
+        contribution, path = load_contribution(root, contribution_id)
+        if check.get("status") == "would_apply":
+            decision = "safe_to_accept"
+            reason = "Patch applies cleanly, target scope is allowed, and required source refs are present."
+        else:
+            decision = "conflict"
+            reason = check.get("reason", "Patch check failed.")
+    elif contribution.get("type") == "knowledge_import":
+        decision = "needs_human"
+        reason = "Raw knowledge imports need human or workflow processing before automatic acceptance."
+    else:
+        decision = "needs_human"
+        reason = "No automatic reviewer policy is defined for this contribution type."
+    contribution["reviewer_agent"] = reviewer
+    contribution["reviewer_decision"] = decision
+    contribution["reviewer_reason"] = reason
+    contribution["reviewer_checked_at"] = now
+    contribution["updated_at"] = now
+    write_yaml(path, contribution)
+    return contribution
+
+
 def apply_patch_contribution(root, contribution_id, reviewer="local_user"):
     contribution, path = load_contribution(root, contribution_id)
     if contribution.get("status") != "pending":

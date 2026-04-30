@@ -142,6 +142,15 @@ novi accept all --task task_...
 novi task continue task_...
 ```
 
+可以先让 auditor agent 做保守初审，再只接受被标记为安全的贡献：
+
+```bash
+novi review --task task_... --check --agent
+novi accept --reviewed --task task_...
+```
+
+当前 reviewer 是 deterministic policy：能 clean apply、scope 合法、agent source refs 完整的 `document_patch` 会标记为 `safe_to_accept`；冲突或原始 import 会留给人类处理。
+
 导入文档时可以挂到已有任务上，让文档处理 run 成为同一个任务链路的一部分：
 
 ```bash

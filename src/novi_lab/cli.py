@@ -20,6 +20,7 @@ from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
     accepted_knowledge,
+    agent_review_contribution,
     apply_patch_contribution,
     active_session,
     append_session_message,
@@ -613,12 +614,16 @@ def _pending_contributions(root, task_id=None):
     return contributions
 
 
-def _resolve_pending_contributions(root, selector, task_id=None):
+def _resolve_pending_contributions(root, selector, task_id=None, reviewed=False):
     pending = _pending_contributions(root, task_id=task_id)
+    if reviewed:
+        pending = [item for item in pending if item.get("reviewer_decision") == "safe_to_accept"]
     if selector == "all":
         return pending
     if selector == "latest":
         if not pending:
+            if reviewed:
+                return []
             raise RuntimeError("No pending contributions.")
         pending.sort(key=lambda item: item.get("created_at", ""))
         return [pending[-1]]
@@ -668,6 +673,9 @@ def cmd_review(args):
             check_status = "-"
             if args.check and contribution.get("type") == "document_patch":
                 check_status = check_patch_contribution(root, contribution["id"]).get("status", "-")
+            if args.agent:
+                reviewed = agent_review_contribution(root, contribution["id"])
+                print(f"Reviewer {reviewed.get('reviewer_agent')}: {reviewed['id']} {reviewed.get('reviewer_decision')} - {reviewed.get('reviewer_reason')}")
             contribution_table.add_row(
                 contribution["id"],
                 contribution.get("status", "-"),
@@ -686,13 +694,15 @@ def cmd_review(args):
 
 def cmd_accept(args):
     accepted = []
-    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector, task_id=args.task):
+    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector, task_id=args.task, reviewed=args.reviewed):
         record, message = _accept_contribution(Path.cwd(), contribution["id"])
         accepted.append(record["id"])
         print(f"Contribution {record['id']} {message}")
         if record.get("accepted_knowledge_path"):
             print(f"Accepted knowledge: {record['accepted_knowledge_path']}")
-    if not accepted:
+    if not accepted and args.reviewed:
+        print("No reviewed safe contributions to accept.")
+    elif not accepted:
         print("No pending contributions to accept.")
     return 0
 
@@ -909,6 +919,10 @@ def cmd_contribution_inspect(args):
         print(f"Conflict reason: {contribution.get('conflict_reason')}")
     if contribution.get("review_comment"):
         print(f"Review comment: {contribution.get('review_comment')}")
+    if contribution.get("reviewer_decision"):
+        print(f"Reviewer decision: {contribution.get('reviewer_decision')}")
+        print(f"Reviewer: {contribution.get('reviewer_agent', '-')}")
+        print(f"Reviewer reason: {contribution.get('reviewer_reason', '-')}")
     return 0
 
 
@@ -1105,11 +1119,13 @@ def build_parser():
     accept_parser = subparsers.add_parser("accept")
     accept_parser.add_argument("selector", nargs="?", default="latest")
     accept_parser.add_argument("--task")
+    accept_parser.add_argument("--reviewed", action="store_true")
     accept_parser.set_defaults(func=cmd_accept)
 
     review_parser = subparsers.add_parser("review")
     review_parser.add_argument("--check", action="store_true")
     review_parser.add_argument("--task")
+    review_parser.add_argument("--agent", action="store_true")
     review_parser.set_defaults(func=cmd_review)
 
     artifact_parser = subparsers.add_parser("artifact")
