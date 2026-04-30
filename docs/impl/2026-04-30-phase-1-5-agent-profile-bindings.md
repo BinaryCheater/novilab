@@ -18,6 +18,11 @@ authority, kernel binding, and tool routing inspectable.
   `expose_to` routing.
 - Filtered compiled kernel bindings so DeepAgents wrappers only receive tools
   available to the selected agent.
+- Added Rich as the first terminal presentation dependency.
+- Added `novi ps` as an operator overview for active session, session list,
+  recent runs, and pending review counts.
+- Rendered `session list` and `run list` as Rich tables.
+- Added `latest` support to `run inspect`.
 - Updated Phase 1.5 roadmap language around layered knowledge, mid-term
   session memory, and agent authority levels.
 
@@ -29,4 +34,7 @@ authority, kernel binding, and tool routing inspectable.
 - `uv run pytest tests/test_cli_core_loop.py::test_tool_expose_updates_routing_metadata -v`
 - `uv run pytest tests/test_cli_core_loop.py::test_tool_call_requires_agent_scope_and_exposure -v`
 - `uv run pytest tests/test_cli_core_loop.py::test_kernel_binding_filters_unexposed_tools -v`
-- `uv run pytest -q` passed with 32 tests.
+- `uv run pytest tests/test_cli_core_loop.py::test_ps_lists_active_session_recent_runs_and_pending_memory -v`
+- `uv run pytest tests/test_cli_core_loop.py::test_session_and_run_lists_use_operator_tables -v`
+- `uv run pytest tests/test_cli_core_loop.py::test_run_inspect_accepts_latest_alias -v`
+- `uv run pytest -q` passed with 35 tests.

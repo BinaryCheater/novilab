@@ -3,6 +3,10 @@ import os
 import sys
 from pathlib import Path
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
 from .agents import (
     add_agent_list_value,
     create_agent,
@@ -29,6 +33,9 @@ from .store import (
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
+
+
+console = Console()
 
 
 def _response_body(run_dir):
@@ -202,8 +209,22 @@ def cmd_session_create(args):
 
 
 def cmd_session_list(args):
+    active_id = project_config(Path.cwd()).get("active_session_id")
+    table = Table(title="Sessions")
+    table.add_column("Active")
+    table.add_column("Session ID")
+    table.add_column("Status")
+    table.add_column("Current Run")
+    table.add_column("Title")
     for session in list_sessions(Path.cwd()):
-        print(f"{session['id']}\t{session['status']}\t{session.get('current_run_id') or '-'}\t{session['title']}")
+        table.add_row(
+            "*" if session["id"] == active_id else "",
+            session["id"],
+            session["status"],
+            session.get("current_run_id") or "-",
+            session["title"],
+        )
+    console.print(table)
     return 0
 
 
@@ -260,18 +281,25 @@ def cmd_ask(args):
 
 def cmd_run_list(args):
     session = active_session(Path.cwd())
+    table = Table(title=f"Runs for {session['id']}")
+    table.add_column("Run ID")
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Objective")
     for run_id in session.get("run_ids", []):
         run = load_run(Path.cwd(), run_id)
-        print(f"{run['id']}\t{run['status']}\t{run['type']}\t{run['objective']}")
+        table.add_row(run["id"], run["status"], run["type"], run["objective"])
+    console.print(table)
     return 0
 
 
 def cmd_run_inspect(args):
     base = require_workspace(Path.cwd())
-    run = load_run(Path.cwd(), args.run_id)
+    run_id = _run_id_arg(Path.cwd(), args.run_id)
+    run = load_run(Path.cwd(), run_id)
     if not run:
-        raise RuntimeError(f"Run not found: {args.run_id}")
-    run_dir = base / "runs" / args.run_id
+        raise RuntimeError(f"Run not found: {run_id}")
+    run_dir = base / "runs" / run_id
     tool_calls = read_jsonl(run_dir / "tool_calls.jsonl")
     print(f"Run: {run['id']}")
     print(f"Objective: {run['objective']}")
@@ -390,6 +418,68 @@ def cmd_status(args):
     return 0
 
 
+def cmd_ps(args):
+    root = Path.cwd()
+    config = project_config(root)
+    sessions = list_sessions(root)
+    active_id = config.get("active_session_id")
+    active = load_session(root, active_id) if active_id else None
+
+    if active:
+        console.print(
+            Panel(
+                "\n".join(
+                    [
+                        f"Session: {active['id']}",
+                        f"Title: {active['title']}",
+                        f"Current run: {active.get('current_run_id') or '-'}",
+                    ]
+                ),
+                title="Active session",
+            )
+        )
+    else:
+        console.print(Panel("No active session", title="Active session"))
+
+    session_table = Table(title="Sessions")
+    session_table.add_column("Active")
+    session_table.add_column("Session ID")
+    session_table.add_column("Status")
+    session_table.add_column("Current Run")
+    session_table.add_column("Title")
+    for session in sessions:
+        session_table.add_row(
+            "*" if session["id"] == active_id else "",
+            session["id"],
+            session["status"],
+            session.get("current_run_id") or "-",
+            session["title"],
+        )
+    console.print(session_table)
+
+    run_table = Table(title="Recent runs")
+    run_table.add_column("Run ID")
+    run_table.add_column("Status")
+    run_table.add_column("Type")
+    run_table.add_column("Objective")
+    recent_run_ids = []
+    if active:
+        recent_run_ids = list(reversed(active.get("run_ids", [])))[:5]
+    for run_id in recent_run_ids:
+        run = load_run(root, run_id)
+        run_table.add_row(run["id"], run["status"], run["type"], run["objective"])
+    console.print(run_table)
+
+    pending_memory = [candidate for candidate in memory_candidates(root) if candidate.get("status") == "proposed"]
+    pending_table = Table(title="Pending review")
+    pending_table.add_column("Queue")
+    pending_table.add_column("Count")
+    pending_table.add_row("Memory candidates", str(len(pending_memory)))
+    pending_table.add_row("Approvals", "0")
+    console.print(pending_table)
+    return 0
+
+
 def _configured_model_from_args(args):
     if args.provider == "siliconflow":
         return {
@@ -449,6 +539,9 @@ def build_parser():
 
     status_parser = subparsers.add_parser("status")
     status_parser.set_defaults(func=cmd_status)
+
+    ps_parser = subparsers.add_parser("ps")
+    ps_parser.set_defaults(func=cmd_ps)
 
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)

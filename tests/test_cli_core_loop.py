@@ -238,6 +238,46 @@ def test_session_create_writes_session_records(tmp_path):
     assert (session_dir / "messages.jsonl").exists()
 
 
+def test_ps_lists_active_session_recent_runs_and_pending_memory(tmp_path):
+    run_cli(tmp_path, "init")
+    session_result = run_cli(tmp_path, "session", "create", "physical-ai literature scan")
+    session_id = parse_id(session_result.stdout, "sess_")
+    run_result = run_cli(tmp_path, "run", "start", "research", "summarize recent work")
+    run_id = parse_id(run_result.stdout, "run_")
+
+    result = run_cli(tmp_path, "ps")
+
+    assert result.returncode == 0, result.stderr
+    assert "Active session" in result.stdout
+    assert session_id in result.stdout
+    assert "Sessions" in result.stdout
+    assert "Recent runs" in result.stdout
+    assert run_id in result.stdout
+    assert "Pending review" in result.stdout
+    assert "Memory candidates" in result.stdout
+    assert "1" in result.stdout
+
+
+def test_session_and_run_lists_use_operator_tables(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "table session")
+    run_cli(tmp_path, "run", "start", "research", "table run")
+
+    session_list = run_cli(tmp_path, "session", "list")
+    run_list = run_cli(tmp_path, "run", "list")
+
+    assert session_list.returncode == 0, session_list.stderr
+    assert "Active" in session_list.stdout
+    assert "Session ID" in session_list.stdout
+    assert "Current Run" in session_list.stdout
+    assert "table session" in session_list.stdout
+    assert run_list.returncode == 0, run_list.stderr
+    assert "Run ID" in run_list.stdout
+    assert "Status" in run_list.stdout
+    assert "Objective" in run_list.stdout
+    assert "table run" in run_list.stdout
+
+
 def test_run_start_creates_auditable_deterministic_records(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "physical-ai literature scan")
@@ -737,6 +777,19 @@ def test_run_archives_compiled_kernel_bindings(tmp_path):
     assert "Kernel bindings:" in inspect_result.stdout
     assert "agent_orchestrator simple" in inspect_result.stdout
     assert "Kernel bindings:" in trace_result.stdout
+
+
+def test_run_inspect_accepts_latest_alias(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "latest inspect")
+    run_result = run_cli(tmp_path, "run", "start", "research", "inspect latest")
+    run_id = parse_id(run_result.stdout, "run_")
+
+    inspect_result = run_cli(tmp_path, "run", "inspect", "latest")
+
+    assert inspect_result.returncode == 0, inspect_result.stderr
+    assert f"Run: {run_id}" in inspect_result.stdout
+    assert "inspect latest" in inspect_result.stdout
 
 
 def test_kernel_binding_filters_unexposed_tools(tmp_path):
