@@ -131,8 +131,17 @@ novi task "反思当前文档组织和 skill 使用方式" --workflow reflection
 novi task list
 novi task inspect task_...
 novi task continue task_...
+novi task continue task_... --steps 3
 novi task close task_...
 ```
+
+新建任务也可以直接执行多个 workflow step：
+
+```bash
+novi task "整理接触先验相关文档并给出下一步研究计划" --steps 3
+```
+
+`task` 会在 `task.yaml` 中保存 `workflow_state`。每次 run 都会记录 `workflow_id`、`workflow_step_id` 和 `workflow_step_kind`，prompt archive 里会包含当前 workflow step 与同一 task 的历史 run 引用。这样外部 API、TUI 或更高层 agent 可以把 `task continue --steps N` 当成可恢复的 workflow 推进接口。
 
 如果任务下存在 pending proposal，`task continue` 会停在 review gate，不会继续推进。按任务过滤 review/accept：
 

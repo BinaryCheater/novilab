@@ -61,6 +61,9 @@ def build_prompt_parts(root, run_record, context_pack):
         f"- Session ID: {run_record['session_id']}",
         f"- Type: {run_record['type']}",
         f"- Objective: {run_record['objective']}",
+        f"- Workflow ID: {run_record.get('workflow_id') or '-'}",
+        f"- Workflow step: {run_record.get('workflow_step_id') or '-'}",
+        f"- Workflow step kind: {run_record.get('workflow_step_kind') or '-'}",
         f"- Status: {run_record['status']}",
         "",
         "# Active Agent",
@@ -144,7 +147,34 @@ def build_prompt_parts(root, run_record, context_pack):
         )
         for message in session_messages(root, run_record["session_id"], limit=12)
     )
-    current_task = "\n".join(["# Current Task", "", run_record["objective"], ""])
+    task_history_lines = ["# Task History", ""]
+    task_refs = context_pack.get("task_run_refs", [])
+    if task_refs:
+        for ref in task_refs:
+            task_history_lines.extend(
+                [
+                    f"## Run {ref.get('run_id')}",
+                    "",
+                    f"- Status: {ref.get('status') or '-'}",
+                    f"- Workflow step: {ref.get('workflow_step_id') or '-'}",
+                    f"- Step title: {ref.get('workflow_step_title') or '-'}",
+                    f"- Summary path: {ref.get('summary_path') or '-'}",
+                    "",
+                ]
+            )
+    else:
+        task_history_lines.append("No prior task runs.")
+    current_task_lines = ["# Current Task", "", run_record["objective"], ""]
+    if run_record.get("workflow_step_id"):
+        current_task_lines.extend(
+            [
+                f"Workflow step: {run_record.get('workflow_step_id')}",
+                f"Step title: {run_record.get('workflow_step_title') or '-'}",
+                f"Step kind: {run_record.get('workflow_step_kind') or '-'}",
+                "",
+            ]
+        )
+    current_task = "\n".join(current_task_lines)
     return [
         ("00-system.md", system),
         ("20-agent.md", run_context.strip() + "\n"),
@@ -152,6 +182,7 @@ def build_prompt_parts(root, run_record, context_pack):
         ("40-tools.md", "\n".join(tool_lines).strip() + "\n"),
         ("60-accepted-knowledge.md", "\n".join(knowledge_lines).strip() + "\n"),
         ("70-recent-messages.jsonl", recent_messages + ("\n" if recent_messages else "")),
+        ("75-task-history.md", "\n".join(task_history_lines).strip() + "\n"),
         ("80-current-task.md", current_task),
     ]
 

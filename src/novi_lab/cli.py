@@ -52,7 +52,14 @@ from .store import (
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
-from .workflows import list_workflows, load_workflow
+from .workflows import (
+    advance_workflow_state,
+    current_workflow_step,
+    initial_workflow_state,
+    list_workflows,
+    load_workflow,
+    workflow_step_instruction,
+)
 
 
 console = Console()
@@ -320,8 +327,49 @@ def cmd_ask(args):
     return 0
 
 
+def _prepare_task_step(root, task):
+    workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
+    state = task.get("workflow_state") or initial_workflow_state(workflow)
+    step = current_workflow_step(workflow, state)
+    if not step:
+        raise RuntimeError(f"Workflow {workflow.get('id')} has no executable steps.")
+    task["workflow_state"] = state
+    return workflow, state, step, workflow_step_instruction(workflow, task, step)
+
+
+def _finish_task_step(root, task, workflow, step, run):
+    state = advance_workflow_state(workflow, task.get("workflow_state"), step["id"])
+    task["workflow_state"] = state
+    task.setdefault("run_ids", []).append(run["id"])
+    task["current_run_id"] = run["id"]
+    save_task(root, task)
+    return task
+
+
+def _run_task_step(root, task, session, args):
+    workflow, _state, step, instruction = _prepare_task_step(root, task)
+    agents = [load_agent(root, agent_id) for agent_id in args.agent]
+    print(f"Workflow step: {step['id']} - {step.get('title', step['id'])}")
+    run = start_deterministic_run(
+        root,
+        session,
+        args.type,
+        instruction,
+        agents,
+        kernel=args.kernel,
+        preflight_tools=False,
+        task_id=task["id"],
+        workflow_id=workflow.get("id"),
+        workflow_step=step,
+    )
+    _finish_task_step(root, task, workflow, step, run)
+    return run
+
+
 def cmd_task(args):
     root = Path.cwd()
+    if args.steps < 1:
+        raise RuntimeError("--steps must be 1 or greater.")
     if args.task_args and args.task_args[0] == "list":
         table = Table(title="Tasks")
         table.add_column("Task ID", no_wrap=True)
@@ -345,11 +393,14 @@ def cmd_task(args):
         print(f"Workflow: {task.get('workflow_id', '-')}")
         print(f"Session: {task.get('session_id') or '-'}")
         print(f"Current run: {task.get('current_run_id') or '-'}")
+        state = task.get("workflow_state") or {}
+        print(f"Current step: {state.get('current_step_id') or '-'}")
+        print(f"Completed steps: {', '.join(state.get('completed_step_ids', [])) or '-'}")
         print("Runs:")
         for run_id in task.get("run_ids", []):
             print(f"- {run_id}")
         return 0
-    if args.task_args and args.task_args[0] == "continue":
+    if args.task_args and args.task_args[0] in {"continue", "run"}:
         if len(args.task_args) < 2:
             raise RuntimeError("Usage: novi task continue <task_id>")
         task = load_task(root, args.task_args[1])
@@ -358,23 +409,22 @@ def cmd_task(args):
             ids = ", ".join(item["id"] for item in pending)
             raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
         session = load_session(root, task["session_id"]) if task.get("session_id") else active_session(root)
-        agents = [load_agent(root, agent_id) for agent_id in args.agent]
-        run = start_deterministic_run(
-            root,
-            session,
-            args.type,
-            task["objective"],
-            agents,
-            kernel=args.kernel,
-            preflight_tools=False,
-            task_id=task["id"],
-            workflow_id=task.get("workflow_id"),
-        )
-        task.setdefault("run_ids", []).append(run["id"])
-        task["current_run_id"] = run["id"]
-        save_task(root, task)
+        runs = []
+        for _ in range(args.steps):
+            pending = _pending_contributions(root, task_id=task["id"])
+            if pending:
+                ids = ", ".join(item["id"] for item in pending)
+                raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
+            run = _run_task_step(root, task, session, args)
+            runs.append(run)
+            task = load_task(root, task["id"])
         print(f"Continued task: {task['id']}")
-        print(f"Task run: {run['id']}")
+        if len(runs) == 1:
+            print(f"Task run: {runs[0]['id']}")
+        else:
+            print(f"Task runs: {len(runs)}")
+            for run in runs:
+                print(f"- {run['id']}")
         return 0
     if args.task_args and args.task_args[0] == "close":
         if len(args.task_args) < 2:
@@ -397,17 +447,24 @@ def cmd_task(args):
         session = create_session(root, objective)
         print(f"Created session: {session['id']}")
     task = create_task(root, objective, workflow_id=workflow["id"], session_id=session["id"])
+    task["workflow_state"] = initial_workflow_state(workflow)
+    save_task(root, task)
     print(f"Task ID: {task['id']}")
     print(f"Workflow: {task['workflow_id']}")
     append_session_message(root, session["id"], "user", objective)
-    agents = [load_agent(root, agent_id) for agent_id in args.agent]
-    run = start_deterministic_run(root, session, args.type, objective, agents, kernel=args.kernel, preflight_tools=False, task_id=task["id"], workflow_id=task["workflow_id"])
-    task.setdefault("run_ids", []).append(run["id"])
-    task["current_run_id"] = run["id"]
-    save_task(root, task)
-    body = _response_body(require_workspace(root) / "runs" / run["id"])
-    append_session_message(root, session["id"], "assistant", body, run_id=run["id"])
-    print(f"Task run: {run['id']}")
+    runs = []
+    for _ in range(args.steps):
+        run = _run_task_step(root, task, session, args)
+        runs.append(run)
+        task = load_task(root, task["id"])
+    body = _response_body(require_workspace(root) / "runs" / runs[-1]["id"])
+    append_session_message(root, session["id"], "assistant", body, run_id=runs[-1]["id"])
+    if len(runs) == 1:
+        print(f"Task run: {runs[0]['id']}")
+    else:
+        print(f"Task runs: {len(runs)}")
+        for run in runs:
+            print(f"- {run['id']}")
     if body:
         print("")
         print("Response:")
@@ -1166,6 +1223,7 @@ def build_parser():
     task_parser.add_argument("--type", choices=["research", "analysis", "audit"], default="research")
     task_parser.add_argument("--agent", action="append", default=[])
     task_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    task_parser.add_argument("--steps", type=int, default=1)
     task_parser.set_defaults(func=cmd_task)
 
     trace_parser = subparsers.add_parser("trace")

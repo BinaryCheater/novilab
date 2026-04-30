@@ -10,6 +10,8 @@ from .store import (
     content_hash,
     create_run_dir,
     load_session,
+    load_task,
+    read_yaml,
     save_session,
     utc_now,
     write_yaml,
@@ -75,7 +77,7 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
-def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True, task_id=None, workflow_id=None):
+def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True, task_id=None, workflow_id=None, workflow_step=None):
     validate_kernel(kernel)
     now = utc_now()
     run_id = new_id("run")
@@ -101,6 +103,9 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "skill_refs": ["research.review"] if run_type == "research" else [],
         "task_id": task_id,
         "workflow_id": workflow_id,
+        "workflow_step_id": (workflow_step or {}).get("id"),
+        "workflow_step_title": (workflow_step or {}).get("title"),
+        "workflow_step_kind": (workflow_step or {}).get("kind"),
         "participants": participants,
         "context_pack_ids": [],
         "kernel_binding_ids": [],
@@ -119,6 +124,26 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
     context_id = new_id("ctx")
     context_path = run_dir / "context_pack.yaml"
     knowledge_records = accepted_knowledge(root)
+    task_run_refs = []
+    if task_id:
+        try:
+            task = load_task(root, task_id)
+            for prior_run_id in task.get("run_ids", []):
+                prior_run_dir = Path(root) / ".novi" / "runs" / prior_run_id
+                prior_run = read_yaml(prior_run_dir / "run.yaml", {}) if (prior_run_dir / "run.yaml").exists() else {}
+                summary_path = prior_run_dir / "summary.md"
+                task_run_refs.append(
+                    {
+                        "run_id": prior_run_id,
+                        "workflow_step_id": prior_run.get("workflow_step_id"),
+                        "workflow_step_title": prior_run.get("workflow_step_title"),
+                        "status": prior_run.get("status"),
+                        "summary_path": str(summary_path) if summary_path.exists() else None,
+                    }
+                )
+        except RuntimeError:
+            task_run_refs = []
+
     context = {
         "id": context_id,
         "session_id": session["id"],
@@ -140,9 +165,12 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
             }
             for record in knowledge_records
         ],
+        "task_run_refs": task_run_refs,
     }
     if knowledge_records:
         context["includes"].append("accepted knowledge")
+    if task_run_refs:
+        context["includes"].append("prior task runs")
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))

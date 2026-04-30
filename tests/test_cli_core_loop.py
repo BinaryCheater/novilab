@@ -520,6 +520,77 @@ def test_task_list_inspect_and_continue_use_task_workflow(tmp_path):
     assert inspect_after_continue.stdout.count("run_") >= 2
 
 
+def test_task_records_and_advances_workflow_steps(tmp_path):
+    run_cli(tmp_path, "init")
+
+    create = run_cli(tmp_path, "task", "Map contact prior research", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+    run_id = parse_id(create.stdout, "run_")
+    task_path = tmp_path / ".novi" / "tasks" / task_id / "task.yaml"
+    run_path = tmp_path / ".novi" / "runs" / run_id / "run.yaml"
+    prompt_part = tmp_path / ".novi" / "runs" / run_id / "prompt_parts" / "80-current-task.md"
+
+    assert "Workflow step: plan" in create.stdout
+    assert "workflow_state:" in task_path.read_text(encoding="utf-8")
+    assert "current_step_id: work" in task_path.read_text(encoding="utf-8")
+    assert "workflow_step_id: plan" in run_path.read_text(encoding="utf-8")
+    assert "Workflow step: plan" in prompt_part.read_text(encoding="utf-8")
+
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    continued_run_id = parse_id(continued.stdout, "run_")
+    continued_run_path = tmp_path / ".novi" / "runs" / continued_run_id / "run.yaml"
+
+    assert continued.returncode == 0, continued.stderr
+    assert "Workflow step: work" in continued.stdout
+    assert "Current step: continue" in inspect.stdout
+    assert "workflow_step_id: work" in continued_run_path.read_text(encoding="utf-8")
+
+
+def test_task_continue_steps_runs_until_step_limit(tmp_path):
+    run_cli(tmp_path, "init")
+
+    task_id = parse_id(run_cli(tmp_path, "task", "Iterate research", "--kernel", "simple").stdout, "task_")
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple", "--steps", "2")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert continued.returncode == 0, continued.stderr
+    assert "Task runs: 2" in continued.stdout
+    assert "Workflow step: work" in continued.stdout
+    assert "Workflow step: continue" in continued.stdout
+    assert inspect.stdout.count("run_") >= 3
+
+
+def test_task_create_steps_runs_initial_workflow_steps(tmp_path):
+    run_cli(tmp_path, "init")
+
+    create = run_cli(tmp_path, "task", "Start automatic loop", "--kernel", "simple", "--steps", "2")
+    task_id = parse_id(create.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert create.returncode == 0, create.stderr
+    assert "Task runs: 2" in create.stdout
+    assert "Workflow step: plan" in create.stdout
+    assert "Workflow step: work" in create.stdout
+    assert inspect.stdout.count("run_") >= 2
+
+
+def test_task_continue_prompt_includes_prior_task_runs(tmp_path):
+    run_cli(tmp_path, "init")
+
+    create = run_cli(tmp_path, "task", "Use task history", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+    first_run_id = parse_id(create.stdout, "run_")
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    second_run_id = parse_id(continued.stdout, "run_")
+    context_text = (tmp_path / ".novi" / "runs" / second_run_id / "context_pack.yaml").read_text(encoding="utf-8")
+    history_text = (tmp_path / ".novi" / "runs" / second_run_id / "prompt_parts" / "75-task-history.md").read_text(encoding="utf-8")
+
+    assert first_run_id in context_text
+    assert first_run_id in history_text
+    assert "Workflow step: plan" in history_text
+
+
 def test_task_close_marks_task_completed(tmp_path):
     run_cli(tmp_path, "init")
     task_id = parse_id(run_cli(tmp_path, "task", "Closeable task", "--kernel", "simple").stdout, "task_")

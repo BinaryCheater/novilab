@@ -187,3 +187,91 @@ def workflow_prompt(workflow):
             lines.extend(["", step["instructions"]])
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def workflow_steps(workflow):
+    return list(workflow.get("steps", []))
+
+
+def initial_workflow_state(workflow):
+    steps = workflow_steps(workflow)
+    first = _next_executable_step(steps, start_index=0)
+    current = first["id"] if first else None
+    return {
+        "workflow_id": workflow.get("id"),
+        "current_step_id": current,
+        "completed_step_ids": [],
+        "iteration": 0,
+    }
+
+
+def workflow_step_by_id(workflow, step_id):
+    for step in workflow_steps(workflow):
+        if step.get("id") == step_id:
+            return step
+    return None
+
+
+def current_workflow_step(workflow, state):
+    step_id = (state or {}).get("current_step_id")
+    if not step_id:
+        steps = workflow_steps(workflow)
+        return steps[0] if steps else None
+    return workflow_step_by_id(workflow, step_id)
+
+
+def advance_workflow_state(workflow, state, completed_step_id):
+    state = dict(state or initial_workflow_state(workflow))
+    completed = list(state.get("completed_step_ids", []))
+    completed.append(completed_step_id)
+    steps = workflow_steps(workflow)
+    step_ids = [step.get("id") for step in steps]
+    try:
+        index = step_ids.index(completed_step_id)
+    except ValueError:
+        index = -1
+    if steps:
+        next_step = _next_executable_step(steps, start_index=index + 1)
+        state["current_step_id"] = next_step.get("id") if next_step else None
+    else:
+        state["current_step_id"] = None
+    state["completed_step_ids"] = completed
+    state["iteration"] = int(state.get("iteration") or 0) + 1
+    return state
+
+
+def _next_executable_step(steps, start_index=0):
+    if not steps:
+        return None
+    for offset in range(len(steps)):
+        step = steps[(start_index + offset) % len(steps)]
+        if step.get("actor") == "human":
+            continue
+        return step
+    return None
+
+
+def workflow_step_instruction(workflow, task, step):
+    title = step.get("title") or step.get("id")
+    kind = step.get("kind", "-")
+    actor = step.get("actor", "-")
+    lines = [
+        task.get("objective", ""),
+        "",
+        f"Task objective: {task.get('objective', '')}",
+        f"Workflow: {workflow.get('id')}",
+        f"Workflow step: {step.get('id')} - {title}",
+        f"Step kind: {kind}",
+        f"Actor: {actor}",
+        "",
+        "Execute only this workflow step. Use accepted knowledge, active skills, prior task runs, and available tools.",
+    ]
+    if step.get("instructions"):
+        lines.extend(["", "Step instructions:", step["instructions"]])
+    lines.extend(
+        [
+            "",
+            "Output should be concrete and auditable. If durable knowledge, skill, or workflow changes are needed, produce proposals rather than silently modifying accepted state.",
+        ]
+    )
+    return "\n".join(lines).strip()

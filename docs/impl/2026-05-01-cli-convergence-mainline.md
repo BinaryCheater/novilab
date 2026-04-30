@@ -48,11 +48,13 @@ novi workflow show ...
 - Added `--task task_...` to `ingest`/`process` so document processing runs can attach to an existing task.
 - Added task-scoped review gates: `novi task continue <task_id>` blocks when pending task contributions exist, while `novi review --task <task_id> --check` and `novi accept all --task <task_id>` operate on that task's queue.
 - Added deterministic reviewer policy via `novi review --agent`: clean, scoped, source-linked document patches are marked `safe_to_accept`; conflicts and raw imports are left for humans. `novi accept --reviewed [--task task_...]` accepts only safe reviewed contributions.
+- Added workflow step state to tasks. New tasks initialize `workflow_state`, each task run records the active workflow step, and `novi task continue <task_id> --steps N` can advance several resumable workflow steps while preserving run traces.
+- Added prior task run references to context packs and prompt archives so a research loop can continue from earlier task work instead of relying on implicit chat context.
 
 ## Still Open
 
 - Agent reviewer: deterministic reviewer policy exists. A later LLM reviewer can explain semantic risks, source quality, and whether a proposal fits project conventions.
 - Batch policy: `accept all --task` is scoped, but still trusts the human command. A future policy layer should distinguish safe patch batches from knowledge imports or risky changes.
-- Task loop: `novi task continue` can append runs to a task, but it is still manually invoked. It should grow into a policy-controlled loop with checkpoints, generated artifacts, follow-up ingest, and reflection proposals.
+- Task loop: `novi task continue --steps N` can drive a resumable workflow loop and stops at pending review contributions. It is still CLI-driven; a future policy runner should decide step counts, review policy, and task closure automatically.
 - Tool-use library integration: ingest currently gives a bounded library context in the prompt. Later it should expose controlled search/read tools over `.novi/knowledge`.
 - TUI/WebUI: not yet appropriate as a source of truth, but the CLI now exposes the stable surfaces that a TUI can wrap first: task, ingest, review, accept, trace, output.
