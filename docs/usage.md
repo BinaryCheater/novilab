@@ -279,7 +279,29 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli contr
 
 第一版 patch target 只允许 `.novi/knowledge/`、`.novi/workflows/` 和 `.novi/skills/`。如果目标文件在 patch 生成后被修改，accept 会标记 conflict，不会写入目标文件。
 
-## 11. Agent 配置
+## 11. Workflow 配置
+
+`novi init` 会创建默认 workflow：
+
+```text
+.novi/workflows/document-merge.yaml
+```
+
+列出 workflows：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli workflow list
+```
+
+查看 workflow：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli workflow show document-merge
+```
+
+WorkflowSpec 用来描述混合步骤：system 机械步骤、agent 步骤和 human review gate。当前 `document-merge` 包含 load source、analyze、draft patch、check、review、apply 等步骤。`novi process` 会把 workflow id/version、step results 和 `workflow_prompt.md` 归档到 run，后续接入 LLM 时可直接使用这些步骤说明和 skill refs。
+
+## 12. Agent 配置
 
 列出 agents：
 
@@ -313,21 +335,21 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli agent
 
 Agent 在 Novi 中首先是权限、工具、上下文和审计边界，不是为了模拟多人聊天而存在。
 
-## 12. 设计逻辑
+## 13. 设计逻辑
 
-### 12.1 Local-first
+### 13.1 Local-first
 
 Novi 把 `.novi/` 作为本地可读的记录系统。必须结构化的内容使用 YAML/JSONL；需要人类阅读、审查、归档的内容优先使用 Markdown。
 
-### 12.2 Run 是审计单位
+### 13.2 Run 是审计单位
 
 每次执行都是 run。Run 记录 objective、participants、context pack、model calls、tool calls、events、artifacts、summary 和 memory candidates。这样用户可以在任务结束后回答三个问题：发生了什么、为什么发生、产物在哪里。
 
-### 12.3 Session 管长期上下文
+### 13.3 Session 管长期上下文
 
 Session 负责承载长期工作上下文和多轮 messages。`novi ask` 不只是聊天命令，它仍然创建 run，让每一轮模型执行都可审计。
 
-### 12.4 Prompt 与请求分层
+### 13.4 Prompt 与请求分层
 
 Novi 把 prompt/context 拆成几类文件：
 
@@ -338,7 +360,7 @@ Novi 把 prompt/context 拆成几类文件：
 
 这种分层让多轮对话拼接更清楚，也有利于支持 provider 侧 prompt/cache 命中。
 
-### 12.5 DeepAgents 是 kernel，不是 source of truth
+### 13.5 DeepAgents 是 kernel，不是 source of truth
 
 DeepAgents 可以负责复杂执行循环、工具调用和后续 subagent/checkpoint 能力。但 Novi 仍拥有 sessions、runs、tools、artifacts、memory、policy 和 audit。DeepAgents working files 默认是执行工作区，只有被 Novi export/register 后才成为 artifacts。
 

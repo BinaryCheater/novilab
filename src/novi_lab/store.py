@@ -149,8 +149,10 @@ def init_workspace(root):
         if not path.exists():
             path.write_text("" if path.suffix == ".jsonl" else "# Project Memory\n", encoding="utf-8")
     from .agents import write_default_agents
+    from .workflows import write_default_workflows
 
     write_default_agents(root)
+    write_default_workflows(root)
     return base
 
 

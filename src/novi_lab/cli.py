@@ -47,6 +47,7 @@ from .store import (
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
+from .workflows import list_workflows, load_workflow
 
 
 console = Console()
@@ -154,6 +155,27 @@ def cmd_agent_add_skill(args):
 def cmd_agent_set_model(args):
     agent = set_agent_model(Path.cwd(), args.agent_id, args.model_profile)
     print(f"Set model profile for {agent['id']}: {agent['model_profile']}")
+    return 0
+
+
+def cmd_workflow_list(args):
+    for workflow in list_workflows(Path.cwd()):
+        print(f"{workflow['id']}\t{workflow.get('version', '-')}\t{workflow.get('title', '')}")
+    return 0
+
+
+def cmd_workflow_show(args):
+    workflow = load_workflow(Path.cwd(), args.workflow_id)
+    print(f"Workflow: {workflow['id']}")
+    print(f"Version: {workflow.get('version', '-')}")
+    print(f"Title: {workflow.get('title', '')}")
+    print(f"Status: {workflow.get('status', '-')}")
+    print(f"Description: {workflow.get('description', '')}")
+    print("Steps:")
+    for step in workflow.get("steps", []):
+        print(f"- {step.get('id')} {step.get('kind')} {step.get('actor')}: {step.get('title', '')}")
+        if step.get("skill_refs"):
+            print(f"  Skill refs: {', '.join(step.get('skill_refs', []))}")
     return 0
 
 
@@ -877,6 +899,14 @@ def build_parser():
     skill_sub = skill_parser.add_subparsers(dest="skill_command", required=True)
     skill_list = skill_sub.add_parser("list")
     skill_list.set_defaults(func=cmd_skill_list)
+
+    workflow_parser = subparsers.add_parser("workflow")
+    workflow_sub = workflow_parser.add_subparsers(dest="workflow_command", required=True)
+    workflow_list = workflow_sub.add_parser("list")
+    workflow_list.set_defaults(func=cmd_workflow_list)
+    workflow_show = workflow_sub.add_parser("show")
+    workflow_show.add_argument("workflow_id")
+    workflow_show.set_defaults(func=cmd_workflow_show)
 
     agent_parser = subparsers.add_parser("agent")
     agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)

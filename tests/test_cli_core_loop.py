@@ -55,6 +55,42 @@ def test_init_creates_default_agent_definitions(tmp_path):
     assert "role: auditor" in (agent_dir / "agent_auditor.yaml").read_text()
 
 
+def test_init_creates_default_document_merge_workflow(tmp_path):
+    result = run_cli(tmp_path, "init")
+
+    assert result.returncode == 0, result.stderr
+    workflow_path = tmp_path / ".novi" / "workflows" / "document-merge.yaml"
+    workflow_text = workflow_path.read_text()
+    assert workflow_path.exists()
+    assert "id: document-merge" in workflow_text
+    assert "kind: load_source" in workflow_text
+    assert "kind: produce_artifact" in workflow_text
+    assert "kind: produce_contribution" in workflow_text
+    assert "kind: check" in workflow_text
+    assert "kind: review_gate" in workflow_text
+    assert "kind: apply_change" in workflow_text
+    assert "actor: system" in workflow_text
+    assert "actor: agent" in workflow_text
+    assert "actor: human" in workflow_text
+
+
+def test_workflow_list_and_show_document_merge(tmp_path):
+    run_cli(tmp_path, "init")
+
+    list_result = run_cli(tmp_path, "workflow", "list")
+    show_result = run_cli(tmp_path, "workflow", "show", "document-merge")
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert "document-merge" in list_result.stdout
+    assert "Document Merge" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "Workflow: document-merge" in show_result.stdout
+    assert "Steps:" in show_result.stdout
+    assert "load_import load_source system" in show_result.stdout
+    assert "analyze produce_artifact agent" in show_result.stdout
+    assert "draft_patch produce_contribution agent" in show_result.stdout
+
+
 def test_skill_list_shows_builtin_skills(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -416,6 +452,8 @@ def test_process_import_with_target_creates_analysis_note_and_patch_contribution
     analysis_artifact_id = parse_id(process_result.stdout, "art_")
     patch_contribution = tmp_path / ".novi" / "contributions" / f"{patch_contribution_id}.yaml"
     run_dir = tmp_path / ".novi" / "runs" / run_id
+    run_text = (run_dir / "run.yaml").read_text()
+    workflow_prompt = run_dir / "workflow_prompt.md"
 
     assert patch_contribution.exists()
     text = patch_contribution.read_text()
@@ -425,6 +463,16 @@ def test_process_import_with_target_creates_analysis_note_and_patch_contribution
     assert "source_actor: agent" in text
     assert (run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").exists()
     assert (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.patch").exists()
+    assert "workflow_id: document-merge" in run_text
+    assert "workflow_version: 1" in run_text
+    assert "step_results:" in run_text
+    assert "step_id: load_import" in run_text
+    assert "step_id: analyze" in run_text
+    assert "step_id: draft_patch" in run_text
+    assert workflow_prompt.exists()
+    assert "Document Merge Workflow" in workflow_prompt.read_text(encoding="utf-8")
+    assert "Draft document patch" in workflow_prompt.read_text(encoding="utf-8")
+    assert "document.merge" in workflow_prompt.read_text(encoding="utf-8")
     assert patch_contribution_id in run_cli(tmp_path, "review").stdout
 
 
