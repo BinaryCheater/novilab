@@ -10,22 +10,42 @@ def default_agents():
             "role": "orchestrator",
             "description": "Plans runs, selects skills, calls allowed tools, and writes summaries.",
             "skill_refs": ["research.review"],
+            "authority_level": "collaborator",
+            "prompt_refs": ["research.review"],
             "tool_scope": ["search_stub.query"],
             "context_scope": ["project", "session", "skill", "tools"],
             "permission_scope": ["read_only"],
             "model_profile": "deterministic-local",
+            "interface_mode": "cli",
             "output_schema": "run_summary",
+            "kernel_binding_hints": {
+                "deepagents": {
+                    "binding": "deepagents_subagent",
+                    "interrupt_on": [],
+                    "backend_routes": ["workspace", "skills"],
+                }
+            },
         },
         {
             "id": "agent_auditor",
             "role": "auditor",
             "description": "Checks run records, artifacts, tool calls, and memory candidates.",
             "skill_refs": ["run.audit", "memory.curate"],
+            "authority_level": "reviewer",
+            "prompt_refs": ["run.audit", "memory.curate"],
             "tool_scope": [],
             "context_scope": ["run_records", "artifacts", "memory_candidates"],
             "permission_scope": ["read_only"],
             "model_profile": "deterministic-local",
+            "interface_mode": "cli",
             "output_schema": "audit_note",
+            "kernel_binding_hints": {
+                "deepagents": {
+                    "binding": "deepagents_subagent",
+                    "interrupt_on": [],
+                    "backend_routes": ["workspace", "skills", "run_records"],
+                }
+            },
         },
     ]
 
@@ -72,11 +92,21 @@ def create_agent(root, agent_id, role):
         "role": role,
         "description": f"Project-local {role} agent.",
         "skill_refs": [],
+        "authority_level": "executor",
+        "prompt_refs": [],
         "tool_scope": [],
         "context_scope": ["project", "session", "run_records"],
         "permission_scope": ["read_only"],
         "model_profile": "deterministic-local",
+        "interface_mode": "headless",
         "output_schema": "agent_step_note",
+        "kernel_binding_hints": {
+            "deepagents": {
+                "binding": "deepagents_subagent",
+                "interrupt_on": [],
+                "backend_routes": ["workspace"],
+            }
+        },
         "created_at": now,
         "updated_at": now,
     }
@@ -117,12 +147,16 @@ def agent_snapshot(agent, joined_at):
         "agent_id": agent["id"],
         "role": agent["role"],
         "description": agent.get("description", ""),
+        "authority_level": agent.get("authority_level", "executor"),
         "status": "active",
         "joined_at": joined_at,
         "skill_refs": list(agent.get("skill_refs", [])),
+        "prompt_refs": list(agent.get("prompt_refs", [])),
         "tool_scope": list(agent.get("tool_scope", [])),
         "context_scope": list(agent.get("context_scope", [])),
         "permission_scope": list(agent.get("permission_scope", [])),
         "model_profile": agent.get("model_profile", "deterministic-local"),
+        "interface_mode": agent.get("interface_mode", "headless"),
         "output_schema": agent.get("output_schema", "agent_step_note"),
+        "kernel_binding_hints": dict(agent.get("kernel_binding_hints", {})),
     }

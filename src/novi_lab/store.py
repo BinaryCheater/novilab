@@ -1,4 +1,6 @@
 import json
+import shutil
+from difflib import unified_diff
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -96,10 +98,20 @@ def init_workspace(root):
         "runs",
         "memory/candidates",
         "artifacts",
+        "artifacts/imports",
+        "contributions",
+        "knowledge",
+        "knowledge/raw",
+        "knowledge/accepted",
+        "knowledge/analysis",
+        "knowledge/topics",
+        "knowledge/syntheses",
+        "workflows",
         "approvals",
         "skills",
         "agents",
         "tools",
+        "tasks",
     ]:
         (base / relative).mkdir(parents=True, exist_ok=True)
 
@@ -138,8 +150,12 @@ def init_workspace(root):
         if not path.exists():
             path.write_text("" if path.suffix == ".jsonl" else "# Project Memory\n", encoding="utf-8")
     from .agents import write_default_agents
+    from .skills import write_default_project_skills
+    from .workflows import write_default_workflows
 
     write_default_agents(root)
+    write_default_project_skills(root)
+    write_default_workflows(root)
     return base
 
 
@@ -205,6 +221,51 @@ def active_session(root):
     return load_session(root, session_id)
 
 
+def task_dir(root, task_id):
+    return require_workspace(root) / "tasks" / task_id
+
+
+def create_task(root, objective, workflow_id="research-loop", session_id=None):
+    base = require_workspace(root)
+    now = utc_now()
+    task_id = new_id("task")
+    path = base / "tasks" / task_id
+    path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "id": task_id,
+        "objective": objective,
+        "workflow_id": workflow_id,
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+        "session_id": session_id,
+        "run_ids": [],
+        "current_run_id": None,
+        "summary_path": str(path / "summary.md"),
+    }
+    write_yaml(path / "task.yaml", record)
+    (path / "summary.md").write_text(f"# {objective}\n\nWorkflow: {workflow_id}\n", encoding="utf-8")
+    return record
+
+
+def list_tasks(root):
+    base = require_workspace(root)
+    return [read_yaml(path, {}) for path in sorted((base / "tasks").glob("*/task.yaml"))]
+
+
+def load_task(root, task_id):
+    task = read_yaml(task_dir(root, task_id) / "task.yaml", {})
+    if not task:
+        raise RuntimeError(f"Task not found: {task_id}")
+    return task
+
+
+def save_task(root, task):
+    task["updated_at"] = utc_now()
+    write_yaml(task_dir(root, task["id"]) / "task.yaml", task)
+    return task
+
+
 def list_sessions(root):
     base = require_workspace(root)
     sessions = []
@@ -223,6 +284,353 @@ def create_run_dir(root, run_id):
 
 def load_run(root, run_id):
     return read_yaml(require_workspace(root) / "runs" / run_id / "run.yaml", {})
+
+
+def list_artifacts(root):
+    base = require_workspace(root)
+    artifacts = []
+    for path in sorted((base / "artifacts").glob("*.yaml")):
+        artifacts.append(read_yaml(path, {}))
+    for path in sorted((base / "runs").glob("*/artifacts/*.yaml")):
+        artifacts.append(read_yaml(path, {}))
+    return artifacts
+
+
+def load_artifact(root, artifact_id):
+    base = require_workspace(root)
+    paths = [base / "artifacts" / f"{artifact_id}.yaml", *sorted((base / "runs").glob(f"*/artifacts/{artifact_id}.yaml"))]
+    for path in paths:
+        artifact = read_yaml(path, None)
+        if artifact:
+            return artifact
+    raise RuntimeError(f"Artifact not found: {artifact_id}")
+
+
+def accepted_knowledge(root):
+    base = require_workspace(root)
+    records = []
+    for record in read_jsonl(base / "knowledge" / "index.jsonl"):
+        accepted_path = Path(record.get("accepted_path", ""))
+        record = dict(record)
+        record["content"] = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
+        records.append(record)
+    return records
+
+
+def load_accepted_knowledge(root, knowledge_id):
+    for record in accepted_knowledge(root):
+        if record.get("id") == knowledge_id:
+            return record
+    raise RuntimeError(f"Accepted knowledge not found: {knowledge_id}")
+
+
+def import_knowledge_file(root, source):
+    base = require_workspace(root)
+    source_path = Path(source)
+    if not source_path.is_file():
+        raise RuntimeError(f"Import source not found or not a file: {source}")
+    now = utc_now()
+    artifact_id = new_id("art")
+    contribution_id = new_id("contrib")
+    artifact_copy = base / "artifacts" / "imports" / f"{artifact_id}-{source_path.name}"
+    artifact_copy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_path, artifact_copy)
+    artifact = {
+        "id": artifact_id,
+        "type": "knowledge_import",
+        "path": str(artifact_copy),
+        "source_path": str(source_path.resolve()),
+        "created_at": now,
+        "hash": content_hash(artifact_copy),
+        "hash_algorithm": "sha256",
+        "mime_type": "text/markdown" if source_path.suffix.lower() == ".md" else "application/octet-stream",
+        "size_bytes": artifact_copy.stat().st_size,
+    }
+    write_yaml(base / "artifacts" / f"{artifact_id}.yaml", artifact)
+    contribution = {
+        "id": contribution_id,
+        "type": "knowledge_import",
+        "status": "pending",
+        "title": source_path.name,
+        "source": str(source_path.resolve()),
+        "target": "knowledge_vault",
+        "artifact_id": artifact_id,
+        "created_at": now,
+        "updated_at": now,
+        "review_state": "pending",
+    }
+    write_yaml(base / "contributions" / f"{contribution_id}.yaml", contribution)
+    return contribution, artifact
+
+
+def list_contributions(root):
+    base = require_workspace(root)
+    contributions = []
+    for path in sorted((base / "contributions").glob("*.yaml")):
+        contributions.append(read_yaml(path, {}))
+    return contributions
+
+
+def load_contribution(root, contribution_id):
+    path = require_workspace(root) / "contributions" / f"{contribution_id}.yaml"
+    contribution = read_yaml(path, None)
+    if not contribution:
+        raise RuntimeError(f"Contribution not found: {contribution_id}")
+    return contribution, path
+
+
+def _is_relative_to(path, parent):
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def target_type_for_path(root, target):
+    base = require_workspace(root)
+    target_path = Path(target).resolve()
+    allowed = {
+        "knowledge": base / "knowledge",
+        "workflow": base / "workflows",
+        "skill": base / "skills",
+    }
+    for target_type, parent in allowed.items():
+        if _is_relative_to(target_path, parent):
+            return target_type
+    raise RuntimeError("Patch target must be under .novi/knowledge, .novi/workflows, or .novi/skills.")
+
+
+def _relative_to_root(root, path):
+    return str(Path(path).resolve().relative_to(Path(root).resolve()))
+
+
+def _text_hash(text):
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _write_patch_file(path, target_relative_path, before, after):
+    before_lines = before.splitlines(keepends=True)
+    after_lines = after.splitlines(keepends=True)
+    patch = "".join(
+        unified_diff(
+            before_lines,
+            after_lines,
+            fromfile=f"a/{target_relative_path}",
+            tofile=f"b/{target_relative_path}",
+        )
+    )
+    Path(path).write_text(patch, encoding="utf-8")
+
+
+def create_document_patch_contribution(
+    root,
+    title,
+    target,
+    proposed_content,
+    source_refs,
+    source_actor="agent",
+    rationale=None,
+    task_id=None,
+):
+    base = require_workspace(root)
+    target_path = Path(target).resolve()
+    target_type = target_type_for_path(root, target_path)
+    target_relative_path = _relative_to_root(root, target_path)
+    before = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+    contribution_id = new_id("contrib")
+    contribution_dir = base / "contributions" / contribution_id
+    contribution_dir.mkdir(parents=True, exist_ok=True)
+    patch_path = contribution_dir / "proposed.patch"
+    proposed_path = contribution_dir / "proposed.md"
+    rationale_path = contribution_dir / "rationale.md"
+    _write_patch_file(patch_path, target_relative_path, before, proposed_content)
+    proposed_path.write_text(proposed_content, encoding="utf-8")
+    if rationale:
+        rationale_path.write_text(rationale, encoding="utf-8")
+    now = utc_now()
+    contribution = {
+        "id": contribution_id,
+        "type": "document_patch",
+        "status": "pending",
+        "review_state": "pending",
+        "title": title,
+        "target": target_relative_path,
+        "target_type": target_type,
+        "target_path": str(target_path),
+        "target_base_hash": _text_hash(before),
+        "target_exists": target_path.exists(),
+        "patch_path": str(patch_path),
+        "proposed_content_path": str(proposed_path),
+        "rationale_path": str(rationale_path) if rationale else None,
+        "source_actor": source_actor,
+        "source_refs": source_refs,
+        "task_id": task_id,
+        "created_at": now,
+        "updated_at": now,
+    }
+    write_yaml(base / "contributions" / f"{contribution_id}.yaml", contribution)
+    return contribution
+
+
+def check_patch_contribution(root, contribution_id, write_result=True):
+    contribution, path = load_contribution(root, contribution_id)
+    if contribution.get("type") != "document_patch":
+        raise RuntimeError(f"Contribution is not a patch contribution: {contribution_id}")
+    result = {"status": "would_apply", "checked_at": utc_now(), "changed_files": []}
+    try:
+        target_type_for_path(root, contribution["target_path"])
+        if contribution.get("source_actor") in {"agent", "external_worker"} and not contribution.get("source_refs"):
+            raise RuntimeError("agent-generated patch contribution is missing source refs")
+        proposed_path = Path(contribution["proposed_content_path"])
+        if not proposed_path.exists():
+            raise RuntimeError("proposed content is missing")
+        target_path = Path(contribution["target_path"])
+        current = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
+        if _text_hash(current) != contribution.get("target_base_hash"):
+            raise RuntimeError("target changed since patch generation")
+        result["changed_files"] = [contribution["target"]]
+    except RuntimeError as exc:
+        result = {"status": "conflict", "checked_at": utc_now(), "reason": str(exc), "changed_files": []}
+    if write_result:
+        contribution["check_result"] = result
+        contribution["updated_at"] = utc_now()
+        write_yaml(path, contribution)
+    return result
+
+
+def agent_review_contribution(root, contribution_id, reviewer="agent_auditor"):
+    contribution, path = load_contribution(root, contribution_id)
+    now = utc_now()
+    if contribution.get("type") == "document_patch":
+        check = check_patch_contribution(root, contribution_id)
+        contribution, path = load_contribution(root, contribution_id)
+        if check.get("status") == "would_apply":
+            decision = "safe_to_accept"
+            reason = "Patch applies cleanly, target scope is allowed, and required source refs are present."
+        else:
+            decision = "conflict"
+            reason = check.get("reason", "Patch check failed.")
+    elif contribution.get("type") == "knowledge_import":
+        decision = "needs_human"
+        reason = "Raw knowledge imports need human or workflow processing before automatic acceptance."
+    else:
+        decision = "needs_human"
+        reason = "No automatic reviewer policy is defined for this contribution type."
+    contribution["reviewer_agent"] = reviewer
+    contribution["reviewer_decision"] = decision
+    contribution["reviewer_reason"] = reason
+    contribution["reviewer_checked_at"] = now
+    contribution["updated_at"] = now
+    write_yaml(path, contribution)
+    return contribution
+
+
+def apply_patch_contribution(root, contribution_id, reviewer="local_user"):
+    contribution, path = load_contribution(root, contribution_id)
+    if contribution.get("status") != "pending":
+        raise RuntimeError(f"Contribution is already {contribution.get('status')}: {contribution_id}")
+    result = check_patch_contribution(root, contribution_id, write_result=False)
+    now = utc_now()
+    if result["status"] != "would_apply":
+        contribution["status"] = "conflict"
+        contribution["review_state"] = "conflict"
+        contribution["conflict_reason"] = result.get("reason", "patch check failed")
+        contribution["check_result"] = result
+        contribution["updated_at"] = now
+        write_yaml(path, contribution)
+        raise RuntimeError(f"Patch contribution conflict: {contribution['conflict_reason']}")
+    target_path = Path(contribution["target_path"])
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(Path(contribution["proposed_content_path"]).read_text(encoding="utf-8"), encoding="utf-8")
+    contribution["status"] = "accepted"
+    contribution["review_state"] = "accepted"
+    contribution["reviewed_by"] = reviewer
+    contribution["reviewed_at"] = now
+    contribution["merged_at"] = now
+    contribution["changed_files"] = result["changed_files"]
+    contribution["check_result"] = result
+    contribution["updated_at"] = now
+    write_yaml(path, contribution)
+    return contribution
+
+
+def request_changes_contribution(root, contribution_id, reason, reviewer="local_user"):
+    contribution, path = load_contribution(root, contribution_id)
+    if contribution.get("status") != "pending":
+        raise RuntimeError(f"Contribution is already {contribution.get('status')}: {contribution_id}")
+    now = utc_now()
+    contribution["status"] = "changes_requested"
+    contribution["review_state"] = "changes_requested"
+    contribution["reviewed_by"] = reviewer
+    contribution["reviewed_at"] = now
+    contribution["review_comment"] = reason
+    contribution["updated_at"] = now
+    write_yaml(path, contribution)
+    return contribution
+
+
+def _write_accepted_knowledge(root, contribution, reviewer, reviewed_at):
+    if contribution.get("type") != "knowledge_import":
+        return None
+    base = require_workspace(root)
+    artifact = load_artifact(root, contribution["artifact_id"])
+    source_path = Path(artifact["path"])
+    raw_path = base / "knowledge" / "raw" / f"{contribution['id']}-{Path(contribution['title']).name}"
+    accepted_path = base / "knowledge" / "accepted" / f"{contribution['id']}.md"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    accepted_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_path, raw_path)
+    raw_text = raw_path.read_text(encoding="utf-8", errors="replace")
+    accepted_text = "\n".join(
+        [
+            "# Accepted Knowledge",
+            "",
+            f"- Contribution: {contribution['id']}",
+            f"- Source artifact: {artifact['id']}",
+            f"- Source path: {artifact.get('source_path', '-')}",
+            f"- Reviewed by: {reviewer}",
+            f"- Reviewed at: {reviewed_at}",
+            "",
+            "## Content",
+            "",
+            raw_text.strip(),
+            "",
+        ]
+    )
+    accepted_path.write_text(accepted_text, encoding="utf-8")
+    record = {
+        "id": contribution["id"],
+        "type": "accepted_knowledge",
+        "title": contribution.get("title"),
+        "source_artifact_id": artifact["id"],
+        "raw_path": str(raw_path),
+        "accepted_path": str(accepted_path),
+        "reviewed_by": reviewer,
+        "reviewed_at": reviewed_at,
+    }
+    append_jsonl(base / "knowledge" / "index.jsonl", record)
+    return record
+
+
+def decide_contribution(root, contribution_id, status, reviewer="local_user"):
+    contribution, path = load_contribution(root, contribution_id)
+    if contribution.get("status") != "pending":
+        raise RuntimeError(f"Contribution is already {contribution.get('status')}: {contribution_id}")
+    now = utc_now()
+    knowledge_record = None
+    if status == "accepted":
+        knowledge_record = _write_accepted_knowledge(root, contribution, reviewer, now)
+    contribution["status"] = status
+    contribution["review_state"] = status
+    contribution["reviewed_by"] = reviewer
+    contribution["reviewed_at"] = now
+    contribution["updated_at"] = now
+    if knowledge_record:
+        contribution["accepted_knowledge_path"] = knowledge_record["accepted_path"]
+        contribution["knowledge_index_id"] = knowledge_record["id"]
+    write_yaml(path, contribution)
+    return contribution
 
 
 def memory_candidates(root):

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .skills import discover_skills
 from .model_providers import configured_model_record
-from .store import append_jsonl, session_messages
+from .store import accepted_knowledge, append_jsonl, session_messages
 from .tools import list_tools
 
 
@@ -26,6 +26,13 @@ You are executing inside Novi Lab, a local-first, skill-first control plane.
 - Use the provided context pack instead of assuming full chat history is available.
 - Prefer session summaries, run state, active skills, accepted memory, and selected artifacts.
 - Exclude raw old messages, unreviewed memory, and unavailable tools unless explicitly supplied.
+
+## Durable Outputs
+
+- For research or reflection work, produce concrete Markdown working files when possible.
+- Prefer `research-note.md` for findings, synthesis, assumptions, and uncertainty.
+- Prefer `next-actions.md` for concrete follow-up steps and open questions.
+- Prefer `proposals.md` for proposed knowledge, skill, or workflow changes that need review.
 """
 
 
@@ -61,6 +68,9 @@ def build_prompt_parts(root, run_record, context_pack):
         f"- Session ID: {run_record['session_id']}",
         f"- Type: {run_record['type']}",
         f"- Objective: {run_record['objective']}",
+        f"- Workflow ID: {run_record.get('workflow_id') or '-'}",
+        f"- Workflow step: {run_record.get('workflow_step_id') or '-'}",
+        f"- Workflow step kind: {run_record.get('workflow_step_kind') or '-'}",
         f"- Status: {run_record['status']}",
         "",
         "# Active Agent",
@@ -115,6 +125,24 @@ def build_prompt_parts(root, run_record, context_pack):
             ]
         )
 
+    knowledge_lines = ["# Accepted Knowledge", ""]
+    knowledge_records = accepted_knowledge(root)
+    if knowledge_records:
+        for record in knowledge_records:
+            knowledge_lines.extend(
+                [
+                    f"## {record.get('title') or record['id']}",
+                    "",
+                    f"- Contribution: {record['id']}",
+                    f"- Source artifact: {record.get('source_artifact_id', '-')}",
+                    "",
+                    record.get("content", "").strip(),
+                    "",
+                ]
+            )
+    else:
+        knowledge_lines.append("No accepted knowledge records.")
+
     recent_messages = "\n".join(
         json.dumps(
             {
@@ -126,13 +154,42 @@ def build_prompt_parts(root, run_record, context_pack):
         )
         for message in session_messages(root, run_record["session_id"], limit=12)
     )
-    current_task = "\n".join(["# Current Task", "", run_record["objective"], ""])
+    task_history_lines = ["# Task History", ""]
+    task_refs = context_pack.get("task_run_refs", [])
+    if task_refs:
+        for ref in task_refs:
+            task_history_lines.extend(
+                [
+                    f"## Run {ref.get('run_id')}",
+                    "",
+                    f"- Status: {ref.get('status') or '-'}",
+                    f"- Workflow step: {ref.get('workflow_step_id') or '-'}",
+                    f"- Step title: {ref.get('workflow_step_title') or '-'}",
+                    f"- Summary path: {ref.get('summary_path') or '-'}",
+                    "",
+                ]
+            )
+    else:
+        task_history_lines.append("No prior task runs.")
+    current_task_lines = ["# Current Task", "", run_record["objective"], ""]
+    if run_record.get("workflow_step_id"):
+        current_task_lines.extend(
+            [
+                f"Workflow step: {run_record.get('workflow_step_id')}",
+                f"Step title: {run_record.get('workflow_step_title') or '-'}",
+                f"Step kind: {run_record.get('workflow_step_kind') or '-'}",
+                "",
+            ]
+        )
+    current_task = "\n".join(current_task_lines)
     return [
         ("00-system.md", system),
         ("20-agent.md", run_context.strip() + "\n"),
         ("30-skills.md", "\n".join(skill_lines).strip() + "\n"),
         ("40-tools.md", "\n".join(tool_lines).strip() + "\n"),
+        ("60-accepted-knowledge.md", "\n".join(knowledge_lines).strip() + "\n"),
         ("70-recent-messages.jsonl", recent_messages + ("\n" if recent_messages else "")),
+        ("75-task-history.md", "\n".join(task_history_lines).strip() + "\n"),
         ("80-current-task.md", current_task),
     ]
 
@@ -142,7 +199,7 @@ def build_prompt_markdown(root, run_record, context_pack):
 
 
 def build_system_prompt_markdown(root, run_record, context_pack):
-    stable_part_names = {"00-system.md", "30-skills.md", "40-tools.md"}
+    stable_part_names = {"00-system.md", "30-skills.md", "40-tools.md", "60-accepted-knowledge.md"}
     return "\n\n".join(
         content.strip()
         for filename, content in build_prompt_parts(root, run_record, context_pack)

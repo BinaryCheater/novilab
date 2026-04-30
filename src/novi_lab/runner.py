@@ -2,13 +2,16 @@ from pathlib import Path
 
 from .agents import agent_snapshot, load_agent
 from .ids import new_id
-from .kernels import run_deepagents_kernel, validate_kernel
+from .kernels import compile_kernel_binding, run_deepagents_kernel, validate_kernel
 from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
+    accepted_knowledge,
     content_hash,
     create_run_dir,
     load_session,
+    load_task,
+    read_yaml,
     save_session,
     utc_now,
     write_yaml,
@@ -74,7 +77,7 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
-def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True):
+def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True, task_id=None, workflow_id=None, workflow_step=None):
     validate_kernel(kernel)
     now = utc_now()
     run_id = new_id("run")
@@ -98,16 +101,49 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "actor": "local_user",
         "kernel": kernel,
         "skill_refs": ["research.review"] if run_type == "research" else [],
+        "task_id": task_id,
+        "workflow_id": workflow_id,
+        "workflow_step_id": (workflow_step or {}).get("id"),
+        "workflow_step_title": (workflow_step or {}).get("title"),
+        "workflow_step_kind": (workflow_step or {}).get("kind"),
         "participants": participants,
         "context_pack_ids": [],
+        "kernel_binding_ids": [],
         "artifact_ids": [],
         "summary_path": str(run_dir / "summary.md"),
     }
     write_yaml(run_dir / "run.yaml", run_record)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCreated", session["id"], orchestrator, "Run created."))
 
+    for participant in participants:
+        binding = compile_kernel_binding(root, participant, kernel)
+        binding["run_id"] = run_id
+        append_jsonl(run_dir / "kernel_bindings.jsonl", binding)
+        run_record["kernel_binding_ids"].append(f"{participant['agent_id']}:{kernel}")
+
     context_id = new_id("ctx")
     context_path = run_dir / "context_pack.yaml"
+    knowledge_records = accepted_knowledge(root)
+    task_run_refs = []
+    if task_id:
+        try:
+            task = load_task(root, task_id)
+            for prior_run_id in task.get("run_ids", []):
+                prior_run_dir = Path(root) / ".novi" / "runs" / prior_run_id
+                prior_run = read_yaml(prior_run_dir / "run.yaml", {}) if (prior_run_dir / "run.yaml").exists() else {}
+                summary_path = prior_run_dir / "summary.md"
+                task_run_refs.append(
+                    {
+                        "run_id": prior_run_id,
+                        "workflow_step_id": prior_run.get("workflow_step_id"),
+                        "workflow_step_title": prior_run.get("workflow_step_title"),
+                        "status": prior_run.get("status"),
+                        "summary_path": str(summary_path) if summary_path.exists() else None,
+                    }
+                )
+        except RuntimeError:
+            task_run_refs = []
+
     context = {
         "id": context_id,
         "session_id": session["id"],
@@ -120,7 +156,21 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "excludes": ["raw old messages", "unreviewed memory", "network content"],
         "skill_refs": run_record["skill_refs"],
         "tool_refs": ["search_stub.query"],
+        "accepted_knowledge_refs": [
+            {
+                "id": record["id"],
+                "title": record.get("title"),
+                "accepted_path": record.get("accepted_path"),
+                "source_artifact_id": record.get("source_artifact_id"),
+            }
+            for record in knowledge_records
+        ],
+        "task_run_refs": task_run_refs,
     }
+    if knowledge_records:
+        context["includes"].append("accepted knowledge")
+    if task_run_refs:
+        context["includes"].append("prior task runs")
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))
@@ -244,17 +294,31 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "MemoryCandidateProposed", session["id"], auditor, "Memory candidate proposed.", {"memory_candidate_id": memory_id}))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "AuditorReviewed", session["id"], auditor, "Auditor checked deterministic records."))
 
-    summary = "\n".join(
-        [
-            f"# Run {run_id}",
-            "",
-            f"Status: completed",
-            f"Objective: {objective}",
-            "",
-            f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one tool runtime call attempt, one research note artifact, and one memory candidate.",
-            "",
-        ]
-    )
+    if kernel == "deepagents":
+        deepagents_files = run_record.get("deepagents_files", [])
+        summary = "\n".join(
+            [
+                f"# Run {run_id}",
+                "",
+                "Status: completed",
+                f"Objective: {objective}",
+                "",
+                f"The DeepAgents runner wrote a context pack, {len(participants)} agent boundary artifact(s), a model response artifact, {len(deepagents_files)} exported working file artifact(s), one deterministic audit note, and one memory candidate.",
+                "",
+            ]
+        )
+    else:
+        summary = "\n".join(
+            [
+                f"# Run {run_id}",
+                "",
+                "Status: completed",
+                f"Objective: {objective}",
+                "",
+                f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one tool runtime call attempt, one research note artifact, and one memory candidate.",
+                "",
+            ]
+        )
     (run_dir / "summary.md").write_text(summary, encoding="utf-8")
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunSummarized", session["id"], orchestrator, "Run summary written."))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCompleted", session["id"], orchestrator, "Run completed."))

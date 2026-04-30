@@ -3,6 +3,10 @@ import os
 import sys
 from pathlib import Path
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
 from .agents import (
     add_agent_list_value,
     create_agent,
@@ -11,24 +15,54 @@ from .agents import (
     remove_agent_list_value,
     set_agent_model,
 )
+from .processing import process_imported_document, process_imported_documents
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
+    accepted_knowledge,
+    agent_review_contribution,
+    apply_patch_contribution,
     active_session,
     append_session_message,
+    check_patch_contribution,
     create_session,
+    create_task,
     decide_memory_candidate,
+    decide_contribution,
+    import_knowledge_file,
     init_workspace,
+    list_artifacts,
+    list_contributions,
     list_sessions,
+    list_tasks,
+    load_accepted_knowledge,
+    load_artifact,
+    load_contribution,
+    load_memory_candidate,
     load_run,
     load_session,
+    load_task,
     memory_candidates,
     project_config,
     read_jsonl,
+    read_yaml,
+    request_changes_contribution,
     require_workspace,
+    save_task,
     update_project_config,
 )
-from .tools import execute_tool, list_tools, load_tool
+from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
+from .workflows import (
+    advance_workflow_state,
+    current_workflow_step,
+    initial_workflow_state,
+    list_workflows,
+    load_workflow,
+    workflow_step_instruction,
+)
+
+
+console = Console()
 
 
 def _response_body(run_dir):
@@ -82,10 +116,15 @@ def cmd_agent_show(args):
     print(f"Agent: {agent['id']}")
     print(f"Role: {agent['role']}")
     print(f"Description: {agent.get('description', '')}")
+    print(f"Authority level: {agent.get('authority_level', 'executor')}")
     print(f"Model profile: {agent.get('model_profile', '-')}")
+    print(f"Interface mode: {agent.get('interface_mode', 'headless')}")
     print("Skill refs:")
     for skill_ref in agent.get("skill_refs", []):
         print(f"- {skill_ref}")
+    print("Prompt refs:")
+    for prompt_ref in agent.get("prompt_refs", []):
+        print(f"- {prompt_ref}")
     print("Tool scope:")
     for tool_id in agent.get("tool_scope", []):
         print(f"- {tool_id}")
@@ -95,6 +134,9 @@ def cmd_agent_show(args):
     print("Permission scope:")
     for scope in agent.get("permission_scope", []):
         print(f"- {scope}")
+    print("Kernel binding hints:")
+    for kernel, hints in agent.get("kernel_binding_hints", {}).items():
+        print(f"- {kernel}: {hints.get('binding', '-')}")
     return 0
 
 
@@ -128,6 +170,27 @@ def cmd_agent_set_model(args):
     return 0
 
 
+def cmd_workflow_list(args):
+    for workflow in list_workflows(Path.cwd()):
+        print(f"{workflow['id']}\t{workflow.get('version', '-')}\t{workflow.get('title', '')}")
+    return 0
+
+
+def cmd_workflow_show(args):
+    workflow = load_workflow(Path.cwd(), args.workflow_id)
+    print(f"Workflow: {workflow['id']}")
+    print(f"Version: {workflow.get('version', '-')}")
+    print(f"Title: {workflow.get('title', '')}")
+    print(f"Status: {workflow.get('status', '-')}")
+    print(f"Description: {workflow.get('description', '')}")
+    print("Steps:")
+    for step in workflow.get("steps", []):
+        print(f"- {step.get('id')} {step.get('kind')} {step.get('actor')}: {step.get('title', '')}")
+        if step.get("skill_refs"):
+            print(f"  Skill refs: {', '.join(step.get('skill_refs', []))}")
+    return 0
+
+
 def cmd_tool_list(args):
     require_workspace(Path.cwd())
     for tool in list_tools(Path.cwd()):
@@ -148,6 +211,16 @@ def cmd_tool_show(args):
     print("Output artifacts:")
     for artifact_type in tool.get("output_artifacts", []):
         print(f"- {artifact_type}")
+    print("Expose to:")
+    for agent_id in tool.get("expose_to", []):
+        print(f"- {agent_id}")
+    return 0
+
+
+def cmd_tool_expose(args):
+    load_agent(Path.cwd(), args.agent_id)
+    tool = expose_tool_to_agent(Path.cwd(), args.tool_id, args.agent_id)
+    print(f"Exposed {tool['id']} to {args.agent_id}")
     return 0
 
 
@@ -184,8 +257,22 @@ def cmd_session_create(args):
 
 
 def cmd_session_list(args):
+    active_id = project_config(Path.cwd()).get("active_session_id")
+    table = Table(title="Sessions")
+    table.add_column("Active")
+    table.add_column("Session ID")
+    table.add_column("Status")
+    table.add_column("Current Run")
+    table.add_column("Title")
     for session in list_sessions(Path.cwd()):
-        print(f"{session['id']}\t{session['status']}\t{session.get('current_run_id') or '-'}\t{session['title']}")
+        table.add_row(
+            "*" if session["id"] == active_id else "",
+            session["id"],
+            session["status"],
+            session.get("current_run_id") or "-",
+            session["title"],
+        )
+    console.print(table)
     return 0
 
 
@@ -240,20 +327,183 @@ def cmd_ask(args):
     return 0
 
 
+def _prepare_task_step(root, task):
+    workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
+    state = task.get("workflow_state") or initial_workflow_state(workflow)
+    step = current_workflow_step(workflow, state)
+    if not step:
+        raise RuntimeError(f"Workflow {workflow.get('id')} has no executable steps.")
+    task["workflow_state"] = state
+    return workflow, state, step, workflow_step_instruction(workflow, task, step)
+
+
+def _finish_task_step(root, task, workflow, step, run):
+    state = advance_workflow_state(workflow, task.get("workflow_state"), step["id"])
+    task["workflow_state"] = state
+    task.setdefault("run_ids", []).append(run["id"])
+    task["current_run_id"] = run["id"]
+    save_task(root, task)
+    return task
+
+
+def _run_task_step(root, task, session, args):
+    workflow, _state, step, instruction = _prepare_task_step(root, task)
+    agents = [load_agent(root, agent_id) for agent_id in args.agent]
+    print(f"Workflow step: {step['id']} - {step.get('title', step['id'])}")
+    run = start_deterministic_run(
+        root,
+        session,
+        args.type,
+        instruction,
+        agents,
+        kernel=args.kernel,
+        preflight_tools=False,
+        task_id=task["id"],
+        workflow_id=workflow.get("id"),
+        workflow_step=step,
+    )
+    _finish_task_step(root, task, workflow, step, run)
+    return run
+
+
+def cmd_task(args):
+    root = Path.cwd()
+    if args.steps < 1:
+        raise RuntimeError("--steps must be 1 or greater.")
+    if args.task_args and args.task_args[0] == "list":
+        table = Table(title="Tasks")
+        table.add_column("Task ID", no_wrap=True)
+        table.add_column("Status")
+        table.add_column("Workflow")
+        table.add_column("Current Run")
+        table.add_column("Objective")
+        for task in list_tasks(root):
+            table.add_row(task["id"], task.get("status", "-"), task.get("workflow_id", "-"), task.get("current_run_id") or "-", task.get("objective", ""))
+        console.print(table)
+        for task in list_tasks(root):
+            print(f"Task {task['id']}: {task.get('workflow_id', '-')} {task.get('status', '-')} {task.get('objective', '')}")
+        return 0
+    if args.task_args and args.task_args[0] == "inspect":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task inspect <task_id>")
+        task = load_task(root, args.task_args[1])
+        print(f"Task: {task['id']}")
+        print(f"Objective: {task.get('objective', '-')}")
+        print(f"Status: {task.get('status', '-')}")
+        print(f"Workflow: {task.get('workflow_id', '-')}")
+        print(f"Session: {task.get('session_id') or '-'}")
+        print(f"Current run: {task.get('current_run_id') or '-'}")
+        state = task.get("workflow_state") or {}
+        print(f"Current step: {state.get('current_step_id') or '-'}")
+        print(f"Completed steps: {', '.join(state.get('completed_step_ids', [])) or '-'}")
+        print("Runs:")
+        for run_id in task.get("run_ids", []):
+            print(f"- {run_id}")
+        return 0
+    if args.task_args and args.task_args[0] in {"continue", "run"}:
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task continue <task_id>")
+        task = load_task(root, args.task_args[1])
+        pending = _pending_contributions(root, task_id=task["id"])
+        if pending:
+            ids = ", ".join(item["id"] for item in pending)
+            raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
+        session = load_session(root, task["session_id"]) if task.get("session_id") else active_session(root)
+        runs = []
+        for _ in range(args.steps):
+            pending = _pending_contributions(root, task_id=task["id"])
+            if pending:
+                ids = ", ".join(item["id"] for item in pending)
+                raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
+            run = _run_task_step(root, task, session, args)
+            runs.append(run)
+            task = load_task(root, task["id"])
+        print(f"Continued task: {task['id']}")
+        if len(runs) == 1:
+            print(f"Task run: {runs[0]['id']}")
+        else:
+            print(f"Task runs: {len(runs)}")
+            for run in runs:
+                print(f"- {run['id']}")
+        return 0
+    if args.task_args and args.task_args[0] == "close":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task close <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "completed"
+        save_task(root, task)
+        print(f"Closed task: {task['id']}")
+        return 0
+
+    objective = " ".join(args.task_args).strip()
+    if not objective:
+        raise RuntimeError("Usage: novi task <objective>")
+    workflow = load_workflow(root, args.workflow)
+    print(f"Task: {objective}")
+    try:
+        session = active_session(root)
+        print(f"Using active session: {session['id']}")
+    except RuntimeError:
+        session = create_session(root, objective)
+        print(f"Created session: {session['id']}")
+    task = create_task(root, objective, workflow_id=workflow["id"], session_id=session["id"])
+    task["workflow_state"] = initial_workflow_state(workflow)
+    save_task(root, task)
+    print(f"Task ID: {task['id']}")
+    print(f"Workflow: {task['workflow_id']}")
+    append_session_message(root, session["id"], "user", objective)
+    runs = []
+    for _ in range(args.steps):
+        run = _run_task_step(root, task, session, args)
+        runs.append(run)
+        task = load_task(root, task["id"])
+    body = _response_body(require_workspace(root) / "runs" / runs[-1]["id"])
+    append_session_message(root, session["id"], "assistant", body, run_id=runs[-1]["id"])
+    if len(runs) == 1:
+        print(f"Task run: {runs[0]['id']}")
+    else:
+        print(f"Task runs: {len(runs)}")
+        for run in runs:
+            print(f"- {run['id']}")
+    if body:
+        print("")
+        print("Response:")
+        print(body)
+    print("Next:")
+    print("- novi run trace latest")
+    print("- novi review --check")
+    return 0
+
+
+def cmd_trace(args):
+    return cmd_run_trace(args)
+
+
+def cmd_output(args):
+    return cmd_run_output(args)
+
+
 def cmd_run_list(args):
     session = active_session(Path.cwd())
+    table = Table(title=f"Runs for {session['id']}")
+    table.add_column("Run ID")
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Objective")
     for run_id in session.get("run_ids", []):
         run = load_run(Path.cwd(), run_id)
-        print(f"{run['id']}\t{run['status']}\t{run['type']}\t{run['objective']}")
+        table.add_row(run["id"], run["status"], run["type"], run["objective"])
+    console.print(table)
     return 0
 
 
 def cmd_run_inspect(args):
     base = require_workspace(Path.cwd())
-    run = load_run(Path.cwd(), args.run_id)
+    run_id = _run_id_arg(Path.cwd(), args.run_id)
+    run = load_run(Path.cwd(), run_id)
     if not run:
-        raise RuntimeError(f"Run not found: {args.run_id}")
-    run_dir = base / "runs" / args.run_id
+        raise RuntimeError(f"Run not found: {run_id}")
+    run_dir = base / "runs" / run_id
     tool_calls = read_jsonl(run_dir / "tool_calls.jsonl")
     print(f"Run: {run['id']}")
     print(f"Objective: {run['objective']}")
@@ -264,6 +514,9 @@ def cmd_run_inspect(args):
     print("Context packs:")
     for context_id in run.get("context_pack_ids", []):
         print(f"- {context_id}")
+    print("Kernel bindings:")
+    for binding in read_jsonl(run_dir / "kernel_bindings.jsonl"):
+        print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
     print("Tool calls:")
     for call in tool_calls:
         detail = call.get("block_reason") if call.get("status") == "blocked" else call.get("risk", "-")
@@ -307,6 +560,13 @@ def cmd_run_trace(args):
     run_id = _run_id_arg(Path.cwd(), args.run_id)
     run_dir = _run_dir(Path.cwd(), run_id)
     print(f"Run: {run_id}")
+    context = read_yaml(run_dir / "context_pack.yaml", {})
+    print("Accepted knowledge:")
+    refs = context.get("accepted_knowledge_refs", [])
+    if not refs:
+        print("- none")
+    for ref in refs:
+        print(f"- {ref.get('id')} {ref.get('source_artifact_id', '-')} {ref.get('title', '-')}")
     print("Model calls:")
     for call in read_jsonl(run_dir / "model_calls.jsonl"):
         provider = call.get("model_provider") or "-"
@@ -331,6 +591,26 @@ def cmd_run_trace(args):
         print("- none")
     for call in tool_calls:
         print(f"- {call.get('tool_id')} {call.get('status')} {call.get('source', '-')}")
+    print("Artifacts:")
+    artifact_paths = sorted((run_dir / "artifacts").glob("*.yaml"))
+    if not artifact_paths:
+        print("- none")
+    for artifact_path in artifact_paths:
+        artifact = read_yaml(artifact_path, {})
+        print(f"- {artifact.get('id')} {artifact.get('type', '-')} {artifact.get('path', '-')}")
+    run = load_run(Path.cwd(), run_id)
+    files = run.get("deepagents_files", [])
+    print("DeepAgents files:")
+    if not files:
+        print("- none")
+    for item in files:
+        print(f"- {item.get('artifact_id')} {item.get('path')}")
+    print("Kernel bindings:")
+    bindings = read_jsonl(run_dir / "kernel_bindings.jsonl")
+    if not bindings:
+        print("- none")
+    for binding in bindings:
+        print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
     return 0
 
 
@@ -341,6 +621,44 @@ def cmd_memory_review(args):
         return 0
     for candidate in candidates:
         print(f"{candidate['id']}\t{candidate['status']}\t{candidate['type']}\t{candidate['claim']}")
+    return 0
+
+
+def cmd_memory_list(args):
+    table = Table(title="Memory Candidates")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Subject")
+    table.add_column("Claim")
+    for candidate in memory_candidates(Path.cwd()):
+        table.add_row(
+            candidate["id"],
+            candidate.get("status", "-"),
+            candidate.get("type", "-"),
+            candidate.get("subject", "-"),
+            candidate.get("claim", ""),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_memory_show(args):
+    candidate, _ = load_memory_candidate(Path.cwd(), args.candidate_id)
+    print(f"Memory candidate: {candidate['id']}")
+    print(f"Status: {candidate.get('status', '-')}")
+    print(f"Type: {candidate.get('type', '-')}")
+    print(f"Subject: {candidate.get('subject', '-')}")
+    print(f"Scope: {candidate.get('scope', '-')}")
+    print(f"Confidence: {candidate.get('confidence', '-')}")
+    print(f"Proposed by: {candidate.get('proposed_by', '-')}")
+    print(f"Reviewed by: {candidate.get('reviewed_by', '-')}")
+    print(f"Reviewed at: {candidate.get('reviewed_at', '-')}")
+    print("Claim:")
+    print(candidate.get("claim", ""))
+    print("Evidence:")
+    for evidence in candidate.get("evidence", []):
+        print(f"- Run: {evidence.get('run_id')} Artifact: {evidence.get('artifact_id')}")
     return 0
 
 
@@ -356,10 +674,429 @@ def cmd_memory_reject(args):
     return 0
 
 
+def _pending_memory(root):
+    return [candidate for candidate in memory_candidates(root) if candidate.get("status") == "proposed"]
+
+
+def _pending_contributions(root, task_id=None):
+    contributions = [contribution for contribution in list_contributions(root) if contribution.get("status") == "pending"]
+    if task_id:
+        contributions = [contribution for contribution in contributions if contribution.get("task_id") == task_id]
+    return contributions
+
+
+def _resolve_pending_contributions(root, selector, task_id=None, reviewed=False):
+    pending = _pending_contributions(root, task_id=task_id)
+    if reviewed:
+        pending = [item for item in pending if item.get("reviewer_decision") == "safe_to_accept"]
+    if selector == "all":
+        return pending
+    if selector == "latest":
+        if not pending:
+            if reviewed:
+                return []
+            raise RuntimeError("No pending contributions.")
+        pending.sort(key=lambda item: item.get("created_at", ""))
+        return [pending[-1]]
+    contribution, _ = load_contribution(root, selector)
+    return [contribution]
+
+
+def _accept_contribution(root, contribution_id):
+    contribution, _ = load_contribution(root, contribution_id)
+    if contribution.get("type") == "document_patch":
+        return apply_patch_contribution(root, contribution_id), "accepted and merged"
+    return decide_contribution(root, contribution_id, "accepted"), "accepted"
+
+
+def cmd_review(args):
+    root = Path.cwd()
+    pending_memory = _pending_memory(root)
+    pending_contributions = _pending_contributions(root, task_id=args.task)
+    summary = Table(title="Pending Review")
+    summary.add_column("Queue")
+    summary.add_column("Count")
+    summary.add_row("Memory candidates", str(len(pending_memory)))
+    summary.add_row("Contributions", str(len(pending_contributions)))
+    summary.add_row("Workflow patches", "0")
+    summary.add_row("Approvals", "0")
+    console.print(summary)
+
+    if pending_memory:
+        memory_table = Table(title="Memory Candidates")
+        memory_table.add_column("ID")
+        memory_table.add_column("Status")
+        memory_table.add_column("Type")
+        memory_table.add_column("Claim")
+        for candidate in pending_memory:
+            memory_table.add_row(candidate["id"], candidate.get("status", "-"), candidate.get("type", "-"), candidate.get("claim", ""))
+        console.print(memory_table)
+
+    if pending_contributions:
+        contribution_table = Table(title="Contributions")
+        contribution_table.add_column("ID", no_wrap=True)
+        contribution_table.add_column("Status")
+        contribution_table.add_column("Type")
+        if args.check:
+            contribution_table.add_column("Check")
+        contribution_table.add_column("Title")
+        for contribution in pending_contributions:
+            check_status = "-"
+            if args.check and contribution.get("type") == "document_patch":
+                check_status = check_patch_contribution(root, contribution["id"]).get("status", "-")
+            if args.agent:
+                reviewed = agent_review_contribution(root, contribution["id"])
+                print(f"Reviewer {reviewed.get('reviewer_agent')}: {reviewed['id']} {reviewed.get('reviewer_decision')} - {reviewed.get('reviewer_reason')}")
+            contribution_table.add_row(
+                contribution["id"],
+                contribution.get("status", "-"),
+                contribution.get("type", "-"),
+                *([check_status] if args.check else []),
+                contribution.get("title", ""),
+            )
+        console.print(contribution_table)
+        if args.check:
+            for contribution in pending_contributions:
+                if contribution.get("type") == "document_patch":
+                    result = contribution.get("check_result") or check_patch_contribution(root, contribution["id"])
+                    print(f"Check {contribution['id']}: {result.get('status', '-')}")
+    return 0
+
+
+def cmd_accept(args):
+    accepted = []
+    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector, task_id=args.task, reviewed=args.reviewed):
+        record, message = _accept_contribution(Path.cwd(), contribution["id"])
+        accepted.append(record["id"])
+        print(f"Contribution {record['id']} {message}")
+        if record.get("accepted_knowledge_path"):
+            print(f"Accepted knowledge: {record['accepted_knowledge_path']}")
+    if not accepted and args.reviewed:
+        print("No reviewed safe contributions to accept.")
+    elif not accepted:
+        print("No pending contributions to accept.")
+    return 0
+
+
+def cmd_import(args):
+    contribution, artifact = import_knowledge_file(Path.cwd(), args.source)
+    print(f"Imported {contribution['title']}")
+    print(f"Contribution: {contribution['id']}")
+    print(f"Artifact: {artifact['id']}")
+    return 0
+
+
+def _progress(message):
+    print(f"[novi] {message}", flush=True)
+
+
+def _latest_pending_import(root):
+    imports = [
+        item
+        for item in list_contributions(root)
+        if item.get("type") == "knowledge_import" and item.get("status") == "pending"
+    ]
+    if not imports:
+        raise RuntimeError("No pending knowledge import contribution found. Run `novi import <file>` first.")
+    imports.sort(key=lambda item: item.get("created_at", ""))
+    return imports[-1]
+
+
+def _print_process_result(result):
+    print(f"Run: {result['run']['id']}")
+    print(f"Kernel: {result['run'].get('kernel', '-')}")
+    print(f"Analysis artifact: {result['analysis_artifact']['id']}")
+    patch_contributions = result.get("patch_contributions") or ([result["patch_contribution"]] if result.get("patch_contribution") else [])
+    if patch_contributions:
+        print("Patch contributions:")
+        for patch in patch_contributions:
+            print(f"Patch contribution: {patch['id']}")
+        print("Next:")
+        for patch in patch_contributions:
+            patch_id = patch["id"]
+            print(f"- novi contribution inspect {patch_id}")
+            print(f"- novi contribution check {patch_id}")
+            print(f"- novi contribution accept {patch_id}")
+    else:
+        print("No patch contribution created")
+    if result.get("questions_for_human"):
+        print("Questions for human:")
+        for question in result["questions_for_human"]:
+            print(f"- {question}")
+
+
+def cmd_process(args):
+    contribution_id = args.contribution_id
+    if not contribution_id:
+        contribution = _latest_pending_import(Path.cwd())
+        contribution_id = contribution["id"]
+        print(f"Using latest pending import contribution: {contribution_id}", flush=True)
+    result = process_imported_document(
+        Path.cwd(),
+        contribution_id,
+        workflow=args.workflow,
+        target=args.target,
+        kernel=args.kernel,
+        progress=_progress,
+        hint=getattr(args, "hint", None),
+        task_id=getattr(args, "task", None),
+    )
+    _print_process_result(result)
+    return 0
+
+
+def cmd_ingest(args):
+    root = Path.cwd()
+    try:
+        session = active_session(root)
+        print(f"Using active session: {session['id']}", flush=True)
+    except RuntimeError:
+        session = create_session(root, args.session_title)
+        print(f"Created session: {session['id']}", flush=True)
+    contributions = []
+    for source in args.sources:
+        contribution, artifact = import_knowledge_file(root, source)
+        contributions.append(contribution)
+        print(f"Imported: {contribution['id']}")
+        print(f"Import artifact: {artifact['id']}")
+    result = process_imported_documents(
+        root,
+        [item["id"] for item in contributions],
+        workflow=args.workflow,
+        target=args.target,
+        kernel=args.kernel,
+        progress=_progress,
+        hint=args.hint,
+        task_id=args.task,
+    )
+    _print_process_result(result)
+    if args.accept:
+        patches = result.get("patch_contributions") or []
+        if not patches:
+            raise RuntimeError("No patch contribution was created; nothing to accept.")
+        for patch in patches:
+            accepted = apply_patch_contribution(root, patch["id"])
+            print(f"Accepted and merged: {accepted['id']}")
+    return 0
+
+
+def cmd_artifact_list(args):
+    table = Table(title="Artifacts")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Type")
+    table.add_column("Run")
+    table.add_column("Path")
+    for artifact in list_artifacts(Path.cwd()):
+        table.add_row(
+            artifact["id"],
+            artifact.get("type", "-"),
+            artifact.get("run_id", "-"),
+            artifact.get("path", "-"),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_artifact_show(args):
+    artifact = load_artifact(Path.cwd(), args.artifact_id)
+    print(f"Artifact: {artifact['id']}")
+    print(f"Type: {artifact.get('type', '-')}")
+    print(f"Path: {artifact.get('path', '-')}")
+    print(f"Run: {artifact.get('run_id', '-')}")
+    print(f"Produced by: {artifact.get('produced_by', '-')}")
+    print(f"Source path: {artifact.get('source_path', '-')}")
+    print(f"MIME type: {artifact.get('mime_type', '-')}")
+    print(f"Size bytes: {artifact.get('size_bytes', '-')}")
+    print(f"SHA256: {artifact.get('hash', '-')}")
+    return 0
+
+
+def cmd_knowledge_list(args):
+    table = Table(title="Accepted Knowledge")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Title")
+    table.add_column("Source Artifact")
+    table.add_column("Reviewed At")
+    for record in accepted_knowledge(Path.cwd()):
+        table.add_row(
+            record["id"],
+            record.get("title", "-"),
+            record.get("source_artifact_id", "-"),
+            record.get("reviewed_at", "-"),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_knowledge_show(args):
+    record = load_accepted_knowledge(Path.cwd(), args.knowledge_id)
+    print(f"Knowledge: {record['id']}")
+    print(f"Title: {record.get('title', '-')}")
+    print(f"Source artifact: {record.get('source_artifact_id', '-')}")
+    print(f"Raw path: {record.get('raw_path', '-')}")
+    print(f"Accepted path: {record.get('accepted_path', '-')}")
+    print(f"Reviewed by: {record.get('reviewed_by', '-')}")
+    print(f"Reviewed at: {record.get('reviewed_at', '-')}")
+    if record.get("content"):
+        print("")
+        print(record["content"].strip())
+    return 0
+
+
+def cmd_contribution_list(args):
+    table = Table(title="Contributions")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Target")
+    table.add_column("Title")
+    for contribution in list_contributions(Path.cwd()):
+        table.add_row(
+            contribution["id"],
+            contribution.get("status", "-"),
+            contribution.get("type", "-"),
+            contribution.get("target", "-"),
+            contribution.get("title", ""),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_contribution_inspect(args):
+    contribution, _ = load_contribution(Path.cwd(), args.contribution_id)
+    print(f"Contribution: {contribution['id']}")
+    print(f"Status: {contribution.get('status', '-')}")
+    print(f"Type: {contribution.get('type', '-')}")
+    print(f"Title: {contribution.get('title', '')}")
+    print(f"Target: {contribution.get('target', '-')}")
+    print(f"Source: {contribution.get('source', '-')}")
+    print(f"Source artifact: {contribution.get('artifact_id', '-')}")
+    print(f"Source actor: {contribution.get('source_actor', '-')}")
+    if contribution.get("source_refs"):
+        print("Source refs:")
+        for ref in contribution.get("source_refs", []):
+            print(f"- {ref.get('type')}: {ref.get('id')}")
+    if contribution.get("patch_path"):
+        print(f"Patch: {contribution.get('patch_path')}")
+    if contribution.get("check_result"):
+        print(f"Check: {contribution['check_result'].get('status')}")
+    if contribution.get("merged_at"):
+        print(f"Merged at: {contribution.get('merged_at')}")
+    if contribution.get("changed_files"):
+        print("Changed files:")
+        for changed_file in contribution.get("changed_files", []):
+            print(f"- {changed_file}")
+    if contribution.get("conflict_reason"):
+        print(f"Conflict reason: {contribution.get('conflict_reason')}")
+    if contribution.get("review_comment"):
+        print(f"Review comment: {contribution.get('review_comment')}")
+    if contribution.get("reviewer_decision"):
+        print(f"Reviewer decision: {contribution.get('reviewer_decision')}")
+        print(f"Reviewer: {contribution.get('reviewer_agent', '-')}")
+        print(f"Reviewer reason: {contribution.get('reviewer_reason', '-')}")
+    return 0
+
+
+def cmd_contribution_reject(args):
+    contribution = decide_contribution(Path.cwd(), args.contribution_id, "rejected")
+    print(f"Contribution {contribution['id']} rejected")
+    return 0
+
+
+def cmd_contribution_accept(args):
+    contribution, message = _accept_contribution(Path.cwd(), args.contribution_id)
+    print(f"Contribution {contribution['id']} {message}")
+    if contribution.get("accepted_knowledge_path"):
+        print(f"Accepted knowledge: {contribution['accepted_knowledge_path']}")
+    return 0
+
+
+def cmd_contribution_check(args):
+    result = check_patch_contribution(Path.cwd(), args.contribution_id)
+    if result["status"] == "would_apply":
+        print(f"Contribution {args.contribution_id} would apply")
+        for changed_file in result.get("changed_files", []):
+            print(f"- {changed_file}")
+        return 0
+    print(f"Contribution {args.contribution_id} conflict: {result.get('reason', '-')}")
+    return 1
+
+
+def cmd_contribution_request_changes(args):
+    contribution = request_changes_contribution(Path.cwd(), args.contribution_id, args.reason)
+    print(f"Contribution {contribution['id']} changes requested")
+    return 0
+
+
 def cmd_status(args):
     config = project_config(Path.cwd())
     print(f"Workspace: {config.get('workspace')}")
     print(f"Active session: {config.get('active_session_id') or '-'}")
+    return 0
+
+
+def cmd_ps(args):
+    root = Path.cwd()
+    config = project_config(root)
+    sessions = list_sessions(root)
+    active_id = config.get("active_session_id")
+    active = load_session(root, active_id) if active_id else None
+
+    if active:
+        console.print(
+            Panel(
+                "\n".join(
+                    [
+                        f"Session: {active['id']}",
+                        f"Title: {active['title']}",
+                        f"Current run: {active.get('current_run_id') or '-'}",
+                    ]
+                ),
+                title="Active session",
+            )
+        )
+    else:
+        console.print(Panel("No active session", title="Active session"))
+
+    session_table = Table(title="Sessions")
+    session_table.add_column("Active")
+    session_table.add_column("Session ID")
+    session_table.add_column("Status")
+    session_table.add_column("Current Run")
+    session_table.add_column("Title")
+    for session in sessions:
+        session_table.add_row(
+            "*" if session["id"] == active_id else "",
+            session["id"],
+            session["status"],
+            session.get("current_run_id") or "-",
+            session["title"],
+        )
+    console.print(session_table)
+
+    run_table = Table(title="Recent runs")
+    run_table.add_column("Run ID")
+    run_table.add_column("Status")
+    run_table.add_column("Type")
+    run_table.add_column("Objective")
+    recent_run_ids = []
+    if active:
+        recent_run_ids = list(reversed(active.get("run_ids", [])))[:5]
+    for run_id in recent_run_ids:
+        run = load_run(root, run_id)
+        run_table.add_row(run["id"], run["status"], run["type"], run["objective"])
+    console.print(run_table)
+
+    pending_memory = _pending_memory(root)
+    pending_contributions = _pending_contributions(root)
+    pending_table = Table(title="Pending review")
+    pending_table.add_column("Queue")
+    pending_table.add_column("Count")
+    pending_table.add_row("Memory candidates", str(len(pending_memory)))
+    pending_table.add_row("Contributions", str(len(pending_contributions)))
+    pending_table.add_row("Workflow patches", "0")
+    pending_table.add_row("Approvals", "0")
+    console.print(pending_table)
     return 0
 
 
@@ -423,6 +1160,61 @@ def build_parser():
     status_parser = subparsers.add_parser("status")
     status_parser.set_defaults(func=cmd_status)
 
+    ps_parser = subparsers.add_parser("ps")
+    ps_parser.set_defaults(func=cmd_ps)
+
+    import_parser = subparsers.add_parser("import")
+    import_parser.add_argument("source")
+    import_parser.set_defaults(func=cmd_import)
+
+    ingest_parser = subparsers.add_parser("ingest")
+    ingest_parser.add_argument("sources", nargs="+")
+    ingest_parser.add_argument("--target")
+    ingest_parser.add_argument("--hint")
+    ingest_parser.add_argument("--task")
+    ingest_parser.add_argument("--workflow", default="document-merge")
+    ingest_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    ingest_parser.add_argument("--session-title", default="document ingest")
+    ingest_parser.add_argument("--accept", action="store_true")
+    ingest_parser.set_defaults(func=cmd_ingest)
+
+    process_parser = subparsers.add_parser("process")
+    process_parser.add_argument("contribution_id", nargs="?")
+    process_parser.add_argument("--workflow", default="document-merge")
+    process_parser.add_argument("--target")
+    process_parser.add_argument("--hint")
+    process_parser.add_argument("--task")
+    process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    process_parser.set_defaults(func=cmd_process)
+
+    accept_parser = subparsers.add_parser("accept")
+    accept_parser.add_argument("selector", nargs="?", default="latest")
+    accept_parser.add_argument("--task")
+    accept_parser.add_argument("--reviewed", action="store_true")
+    accept_parser.set_defaults(func=cmd_accept)
+
+    review_parser = subparsers.add_parser("review")
+    review_parser.add_argument("--check", action="store_true")
+    review_parser.add_argument("--task")
+    review_parser.add_argument("--agent", action="store_true")
+    review_parser.set_defaults(func=cmd_review)
+
+    artifact_parser = subparsers.add_parser("artifact")
+    artifact_sub = artifact_parser.add_subparsers(dest="artifact_command", required=True)
+    artifact_list = artifact_sub.add_parser("list")
+    artifact_list.set_defaults(func=cmd_artifact_list)
+    artifact_show = artifact_sub.add_parser("show")
+    artifact_show.add_argument("artifact_id")
+    artifact_show.set_defaults(func=cmd_artifact_show)
+
+    knowledge_parser = subparsers.add_parser("knowledge")
+    knowledge_sub = knowledge_parser.add_subparsers(dest="knowledge_command", required=True)
+    knowledge_list = knowledge_sub.add_parser("list")
+    knowledge_list.set_defaults(func=cmd_knowledge_list)
+    knowledge_show = knowledge_sub.add_parser("show")
+    knowledge_show.add_argument("knowledge_id")
+    knowledge_show.set_defaults(func=cmd_knowledge_show)
+
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
     configure_model = configure_sub.add_parser("model")
@@ -439,10 +1231,35 @@ def build_parser():
     ask_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     ask_parser.set_defaults(func=cmd_ask)
 
+    task_parser = subparsers.add_parser("task")
+    task_parser.add_argument("task_args", nargs="*")
+    task_parser.add_argument("--workflow", default="research-loop")
+    task_parser.add_argument("--type", choices=["research", "analysis", "audit"], default="research")
+    task_parser.add_argument("--agent", action="append", default=[])
+    task_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    task_parser.add_argument("--steps", type=int, default=1)
+    task_parser.set_defaults(func=cmd_task)
+
+    trace_parser = subparsers.add_parser("trace")
+    trace_parser.add_argument("run_id", nargs="?", default="latest")
+    trace_parser.set_defaults(func=cmd_trace)
+
+    output_parser = subparsers.add_parser("output")
+    output_parser.add_argument("run_id", nargs="?", default="latest")
+    output_parser.set_defaults(func=cmd_output)
+
     skill_parser = subparsers.add_parser("skill")
     skill_sub = skill_parser.add_subparsers(dest="skill_command", required=True)
     skill_list = skill_sub.add_parser("list")
     skill_list.set_defaults(func=cmd_skill_list)
+
+    workflow_parser = subparsers.add_parser("workflow")
+    workflow_sub = workflow_parser.add_subparsers(dest="workflow_command", required=True)
+    workflow_list = workflow_sub.add_parser("list")
+    workflow_list.set_defaults(func=cmd_workflow_list)
+    workflow_show = workflow_sub.add_parser("show")
+    workflow_show.add_argument("workflow_id")
+    workflow_show.set_defaults(func=cmd_workflow_show)
 
     agent_parser = subparsers.add_parser("agent")
     agent_sub = agent_parser.add_subparsers(dest="agent_command", required=True)
@@ -479,6 +1296,10 @@ def build_parser():
     tool_show = tool_sub.add_parser("show")
     tool_show.add_argument("tool_id")
     tool_show.set_defaults(func=cmd_tool_show)
+    tool_expose = tool_sub.add_parser("expose")
+    tool_expose.add_argument("tool_id")
+    tool_expose.add_argument("agent_id")
+    tool_expose.set_defaults(func=cmd_tool_expose)
     tool_call = tool_sub.add_parser("call")
     tool_call.add_argument("tool_id")
     tool_call.add_argument("--agent", dest="agent_id", required=True)
@@ -524,6 +1345,11 @@ def build_parser():
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)
+    memory_list = memory_sub.add_parser("list")
+    memory_list.set_defaults(func=cmd_memory_list)
+    memory_show = memory_sub.add_parser("show")
+    memory_show.add_argument("candidate_id")
+    memory_show.set_defaults(func=cmd_memory_show)
     memory_review = memory_sub.add_parser("review")
     memory_review.set_defaults(func=cmd_memory_review)
     memory_accept = memory_sub.add_parser("accept")
@@ -532,6 +1358,27 @@ def build_parser():
     memory_reject = memory_sub.add_parser("reject")
     memory_reject.add_argument("candidate_id")
     memory_reject.set_defaults(func=cmd_memory_reject)
+
+    contribution_parser = subparsers.add_parser("contribution")
+    contribution_sub = contribution_parser.add_subparsers(dest="contribution_command", required=True)
+    contribution_list = contribution_sub.add_parser("list")
+    contribution_list.set_defaults(func=cmd_contribution_list)
+    contribution_inspect = contribution_sub.add_parser("inspect")
+    contribution_inspect.add_argument("contribution_id")
+    contribution_inspect.set_defaults(func=cmd_contribution_inspect)
+    contribution_check = contribution_sub.add_parser("check")
+    contribution_check.add_argument("contribution_id")
+    contribution_check.set_defaults(func=cmd_contribution_check)
+    contribution_reject = contribution_sub.add_parser("reject")
+    contribution_reject.add_argument("contribution_id")
+    contribution_reject.set_defaults(func=cmd_contribution_reject)
+    contribution_accept = contribution_sub.add_parser("accept")
+    contribution_accept.add_argument("contribution_id")
+    contribution_accept.set_defaults(func=cmd_contribution_accept)
+    contribution_request_changes = contribution_sub.add_parser("request-changes")
+    contribution_request_changes.add_argument("contribution_id")
+    contribution_request_changes.add_argument("--reason", required=True)
+    contribution_request_changes.set_defaults(func=cmd_contribution_request_changes)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_sub = doctor_parser.add_subparsers(dest="doctor_command", required=True)

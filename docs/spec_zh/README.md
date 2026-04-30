@@ -1,8 +1,8 @@
-# Novi Lab 规格草案
+# Novi Lab 规格
 
-这个目录把启动说明整理成便于审阅和修改的中文规格草案。目标是在开始写代码之前，先把产品边界、架构方向和 v0 范围说清楚。
+这个目录保存与英文 `docs/spec/` 对齐的中文规格。目标是把产品边界、架构方向和 v0/Phase 1.x 范围说清楚。
 
-这些文档不是最终文档，而是工作草案。方向明确时，直接修改对应规格；仍需讨论的取舍，放到 `open-questions.md`。
+这些文档是工作规格，不是面向用户的使用说明。方向明确并且用户批准 spec 变更时，同步修改英文和中文规格；仍需讨论的取舍，放到 `open-questions.md`。
 
 ## 当前文档
 
@@ -11,11 +11,12 @@
 1. `v0-scope.md`：收敛第一个可用版本。
 2. `architecture.md`：定义核心产品形态和系统边界。
 3. `tooling-and-modules.md`：讨论候选工具和模块边界。
-4. `features.md`：整理产品 feature 表和优先级。
-5. `roadmap.md`：整理方向性路线图。
-6. `data-model.md`：定义持久对象和记录格式。
-7. `cli.md`：定义第一版命令行界面。
-8. `open-questions.md`：列出仍需确认的决策。
+4. `exploration.md`：探索 configurable agents、workflow iteration、collaboration 和 scientific memory 如何共同演化。
+5. `features.md`：整理产品 feature 表和优先级。
+6. `roadmap.md`：整理方向性路线图。
+7. `data-model.md`：定义持久对象和记录格式。
+8. `cli.md`：定义第一版命令行界面。
+9. `open-questions.md`：列出仍需确认的决策。
 
 ## 背景来源
 
@@ -62,8 +63,8 @@ novi memory review
 
 ## 当前状态
 
-核心 v0 方向已经接受，Phase 1 实现正在推进中。
+核心 v0 方向已经接受。Phase 1 本地核心实现已经可用，Phase 1.5 正在收敛为 integrated research loop。
 
-当前原型已经可以创建本地 `.novi/` 工作区、列出 skills、创建和打开 sessions、创建 runs、归档 prompt/context 记录、保存 project-local model 配置、通过 deterministic local kernel 或可选 DeepAgents kernel 执行、调用 OpenAI-compatible chat-completions provider，并检查 run output/trace。`novi ask` 会记录多轮 user/assistant messages，并创建可审计 runs。由模型触发的 read-only tool call 可以经过 Novi Tool Runtime，并带 source attribution 写入日志。
+当前原型已经可以创建本地 `.novi/` 工作区、列出 skills、创建和打开 sessions、创建 runs、归档 prompt/context 记录、保存 project-local model 配置、通过 deterministic local kernel 或可选 DeepAgents kernel 执行、调用 OpenAI-compatible chat-completions provider，并检查 run output/trace。`novi ask` 会记录多轮 user/assistant messages，并创建可审计 runs。`novi task` 可以创建由 workflow 支撑的可恢复任务、推进 workflow steps、把模型回复和 working files 归档为 artifacts，并在存在 pending contribution 时停在 review gate。`novi ingest` 会把导入文档保存为 artifacts，并可把 agent proposal 转成可 review 的 document patch contribution。
 
-本 spec 集已冻结。除非用户明确批准 spec 变更，否则不要编辑本目录文件。开发过程和实现记录应放在 `../impl/`。
+本 spec 集已冻结，除非用户明确批准 spec 变更。批准修改时应同步维护英文 `../spec/`。开发过程和实现记录应放在 `../impl/`；面向用户的说明文档应放在 `../guide/`。

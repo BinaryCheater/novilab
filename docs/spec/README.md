@@ -11,11 +11,12 @@ Read in this order:
 1. `v0-scope.md`: narrows the first useful build.
 2. `architecture.md`: defines the core product shape and system boundaries.
 3. `tooling-and-modules.md`: discusses candidate tools and module boundaries.
-4. `features.md`: summarizes product features and priorities.
-5. `roadmap.md`: outlines directional roadmap phases.
-6. `data-model.md`: defines durable objects and records.
-7. `cli.md`: defines the first user-facing command surface.
-8. `open-questions.md`: lists decisions that still need confirmation.
+4. `exploration.md`: records the integrated design exploration for configurable agents, workflow iteration, collaboration, and scientific memory.
+5. `features.md`: summarizes product features and priorities.
+6. `roadmap.md`: outlines directional roadmap phases.
+7. `data-model.md`: defines durable objects and records.
+8. `cli.md`: defines the first user-facing command surface.
+9. `open-questions.md`: lists decisions that still need confirmation.
 
 ## Source Background
 
@@ -62,8 +63,8 @@ When reviewing, focus on:
 
 ## Current Status
 
-The core v0 direction is accepted and Phase 1 implementation is underway.
+The core v0 direction is accepted. Phase 1 local-core implementation is usable, and Phase 1.5 is converging on an integrated research loop.
 
-The current prototype can create a local `.novi/` workspace, list skills, create and open sessions, create runs, archive prompt/context records, store project-local model configuration, execute through the deterministic local kernel or optional DeepAgents kernel, call OpenAI-compatible chat-completions providers, and inspect run output/traces. `novi ask` records multi-turn user/assistant messages and creates auditable runs. Read-only model-triggered tool calls can pass through Novi Tool Runtime and are logged with source attribution.
+The current prototype can create a local `.novi/` workspace, list skills, create and open sessions, create runs, archive prompt/context records, store project-local model configuration, execute through the deterministic local kernel or optional DeepAgents kernel, call OpenAI-compatible chat-completions providers, and inspect run output/traces. `novi ask` records multi-turn user/assistant messages and creates auditable runs. `novi task` creates resumable workflow-backed tasks, advances workflow steps, archives model responses and working files as artifacts, and stops at review gates when pending contributions exist. `novi ingest` preserves imported documents as artifacts and can turn agent proposals into reviewable document patch contributions.
 
-The spec set is frozen. Do not edit files in this folder unless the user explicitly approves a spec change. Development process and implementation notes belong under `../impl/`.
+The spec set is frozen unless the user explicitly approves a spec change. When an approved spec change is made, keep `../spec_zh/` aligned with this folder. Development process and implementation notes belong under `../impl/`; user-facing explanatory docs belong under `../guide/`.
