@@ -25,6 +25,7 @@ from .store import (
     append_session_message,
     check_patch_contribution,
     create_session,
+    create_task,
     decide_memory_candidate,
     decide_contribution,
     import_knowledge_file,
@@ -32,18 +33,21 @@ from .store import (
     list_artifacts,
     list_contributions,
     list_sessions,
+    list_tasks,
     load_accepted_knowledge,
     load_artifact,
     load_contribution,
     load_memory_candidate,
     load_run,
     load_session,
+    load_task,
     memory_candidates,
     project_config,
     read_jsonl,
     read_yaml,
     request_changes_contribution,
     require_workspace,
+    save_task,
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
@@ -317,16 +321,85 @@ def cmd_ask(args):
 
 def cmd_task(args):
     root = Path.cwd()
-    print(f"Task: {args.objective}")
+    if args.task_args and args.task_args[0] == "list":
+        table = Table(title="Tasks")
+        table.add_column("Task ID", no_wrap=True)
+        table.add_column("Status")
+        table.add_column("Workflow")
+        table.add_column("Current Run")
+        table.add_column("Objective")
+        for task in list_tasks(root):
+            table.add_row(task["id"], task.get("status", "-"), task.get("workflow_id", "-"), task.get("current_run_id") or "-", task.get("objective", ""))
+        console.print(table)
+        for task in list_tasks(root):
+            print(f"Task {task['id']}: {task.get('workflow_id', '-')} {task.get('status', '-')} {task.get('objective', '')}")
+        return 0
+    if args.task_args and args.task_args[0] == "inspect":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task inspect <task_id>")
+        task = load_task(root, args.task_args[1])
+        print(f"Task: {task['id']}")
+        print(f"Objective: {task.get('objective', '-')}")
+        print(f"Status: {task.get('status', '-')}")
+        print(f"Workflow: {task.get('workflow_id', '-')}")
+        print(f"Session: {task.get('session_id') or '-'}")
+        print(f"Current run: {task.get('current_run_id') or '-'}")
+        print("Runs:")
+        for run_id in task.get("run_ids", []):
+            print(f"- {run_id}")
+        return 0
+    if args.task_args and args.task_args[0] == "continue":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task continue <task_id>")
+        task = load_task(root, args.task_args[1])
+        session = load_session(root, task["session_id"]) if task.get("session_id") else active_session(root)
+        agents = [load_agent(root, agent_id) for agent_id in args.agent]
+        run = start_deterministic_run(
+            root,
+            session,
+            args.type,
+            task["objective"],
+            agents,
+            kernel=args.kernel,
+            preflight_tools=False,
+            task_id=task["id"],
+            workflow_id=task.get("workflow_id"),
+        )
+        task.setdefault("run_ids", []).append(run["id"])
+        task["current_run_id"] = run["id"]
+        save_task(root, task)
+        print(f"Continued task: {task['id']}")
+        print(f"Task run: {run['id']}")
+        return 0
+    if args.task_args and args.task_args[0] == "close":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task close <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "completed"
+        save_task(root, task)
+        print(f"Closed task: {task['id']}")
+        return 0
+
+    objective = " ".join(args.task_args).strip()
+    if not objective:
+        raise RuntimeError("Usage: novi task <objective>")
+    workflow = load_workflow(root, args.workflow)
+    print(f"Task: {objective}")
     try:
         session = active_session(root)
         print(f"Using active session: {session['id']}")
     except RuntimeError:
-        session = create_session(root, args.objective)
+        session = create_session(root, objective)
         print(f"Created session: {session['id']}")
-    append_session_message(root, session["id"], "user", args.objective)
+    task = create_task(root, objective, workflow_id=workflow["id"], session_id=session["id"])
+    print(f"Task ID: {task['id']}")
+    print(f"Workflow: {task['workflow_id']}")
+    append_session_message(root, session["id"], "user", objective)
     agents = [load_agent(root, agent_id) for agent_id in args.agent]
-    run = start_deterministic_run(root, session, args.type, args.objective, agents, kernel=args.kernel, preflight_tools=False)
+    run = start_deterministic_run(root, session, args.type, objective, agents, kernel=args.kernel, preflight_tools=False, task_id=task["id"], workflow_id=task["workflow_id"])
+    task.setdefault("run_ids", []).append(run["id"])
+    task["current_run_id"] = run["id"]
+    save_task(root, task)
     body = _response_body(require_workspace(root) / "runs" / run["id"])
     append_session_message(root, session["id"], "assistant", body, run_id=run["id"])
     print(f"Task run: {run['id']}")
@@ -678,6 +751,7 @@ def cmd_process(args):
         kernel=args.kernel,
         progress=_progress,
         hint=getattr(args, "hint", None),
+        task_id=getattr(args, "task", None),
     )
     _print_process_result(result)
     return 0
@@ -705,6 +779,7 @@ def cmd_ingest(args):
         kernel=args.kernel,
         progress=_progress,
         hint=args.hint,
+        task_id=args.task,
     )
     _print_process_result(result)
     if args.accept:
@@ -1004,6 +1079,7 @@ def build_parser():
     ingest_parser.add_argument("sources", nargs="+")
     ingest_parser.add_argument("--target")
     ingest_parser.add_argument("--hint")
+    ingest_parser.add_argument("--task")
     ingest_parser.add_argument("--workflow", default="document-merge")
     ingest_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     ingest_parser.add_argument("--session-title", default="document ingest")
@@ -1015,6 +1091,7 @@ def build_parser():
     process_parser.add_argument("--workflow", default="document-merge")
     process_parser.add_argument("--target")
     process_parser.add_argument("--hint")
+    process_parser.add_argument("--task")
     process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     process_parser.set_defaults(func=cmd_process)
 
@@ -1059,7 +1136,8 @@ def build_parser():
     ask_parser.set_defaults(func=cmd_ask)
 
     task_parser = subparsers.add_parser("task")
-    task_parser.add_argument("objective")
+    task_parser.add_argument("task_args", nargs="*")
+    task_parser.add_argument("--workflow", default="research-loop")
     task_parser.add_argument("--type", choices=["research", "analysis", "audit"], default="research")
     task_parser.add_argument("--agent", action="append", default=[])
     task_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")

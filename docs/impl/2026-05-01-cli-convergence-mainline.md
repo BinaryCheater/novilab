@@ -42,11 +42,15 @@ novi workflow show ...
 - Added `novi review --check` to run patch applicability checks while reviewing pending contributions.
 - Added `novi task "..."` as the first research task entrypoint. It creates a session if needed, starts a research run, appends session messages, and prints next inspection commands.
 - Added `novi trace [latest|run_id]` and `novi output [latest|run_id]` as top-level aliases.
+- Promoted task into a durable object under `.novi/tasks/task_.../task.yaml`.
+- Added default `research-loop` and `reflection-loop` WorkflowSpecs.
+- Added `novi task list`, `novi task inspect <task_id>`, `novi task continue <task_id>`, and `novi task close <task_id>`.
+- Added `--task task_...` to `ingest`/`process` so document processing runs can attach to an existing task.
 
 ## Still Open
 
 - Agent reviewer: a reviewer agent should be able to pre-check proposals and mark which are safe for automatic acceptance.
 - Batch policy: `accept all` currently accepts all pending contributions. A future policy layer should distinguish safe patch batches from knowledge imports or risky changes.
-- Task loop: `novi task` currently runs one auditable run. It should grow into a resumable task object with checkpoints, generated artifacts, follow-up ingest, and reflection proposals.
+- Task loop: `novi task continue` can append runs to a task, but it is still manually invoked. It should grow into a policy-controlled loop with checkpoints, generated artifacts, follow-up ingest, and reflection proposals.
 - Tool-use library integration: ingest currently gives a bounded library context in the prompt. Later it should expose controlled search/read tools over `.novi/knowledge`.
 - TUI/WebUI: not yet appropriate as a source of truth, but the CLI now exposes the stable surfaces that a TUI can wrap first: task, ingest, review, accept, trace, output.

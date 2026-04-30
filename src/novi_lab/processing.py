@@ -14,7 +14,9 @@ from .store import (
     load_artifact,
     load_contribution,
     load_session,
+    load_task,
     save_session,
+    save_task,
     target_type_for_path,
     utc_now,
     write_yaml,
@@ -316,11 +318,11 @@ def _step(workflow, step_id, status, artifact_ids=None, contribution_ids=None, s
     return result
 
 
-def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None):
-    return process_imported_documents(root, [contribution_id], workflow=workflow, target=target, kernel=kernel, progress=progress, hint=hint)
+def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None, task_id=None):
+    return process_imported_documents(root, [contribution_id], workflow=workflow, target=target, kernel=kernel, progress=progress, hint=hint, task_id=task_id)
 
 
-def process_imported_documents(root, contribution_ids, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None):
+def process_imported_documents(root, contribution_ids, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None, task_id=None):
     if progress:
         progress(f"Loading workflow: {workflow}")
     workflow_record = load_workflow(root, workflow)
@@ -370,6 +372,7 @@ def process_imported_documents(root, contribution_ids, workflow="document-merge"
         "kernel": kernel,
         "workflow_id": workflow_record["id"],
         "workflow_version": workflow_record.get("version"),
+        "task_id": task_id,
         "source_contribution_id": contribution_ids[0] if len(contribution_ids) == 1 else None,
         "source_contribution_ids": contribution_ids,
         "artifact_ids": [],
@@ -546,6 +549,11 @@ def process_imported_documents(root, contribution_ids, workflow="document-merge"
     session["current_run_id"] = run_id
     session.setdefault("run_ids", []).append(run_id)
     save_session(root, session)
+    if task_id:
+        task = load_task(root, task_id)
+        task.setdefault("run_ids", []).append(run_id)
+        task["current_run_id"] = run_id
+        save_task(root, task)
 
     return {
         "run": run_record,

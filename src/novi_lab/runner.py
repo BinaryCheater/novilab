@@ -75,7 +75,7 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
-def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True):
+def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True, task_id=None, workflow_id=None):
     validate_kernel(kernel)
     now = utc_now()
     run_id = new_id("run")
@@ -99,6 +99,8 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "actor": "local_user",
         "kernel": kernel,
         "skill_refs": ["research.review"] if run_type == "research" else [],
+        "task_id": task_id,
+        "workflow_id": workflow_id,
         "participants": participants,
         "context_pack_ids": [],
         "kernel_binding_ids": [],

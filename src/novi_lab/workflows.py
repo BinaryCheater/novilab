@@ -97,6 +97,37 @@ def default_workflows():
                 "patch_created_when_target_provided",
                 "patch_check_passes_before_accept",
             ],
+        },
+        {
+            "id": "research-loop",
+            "version": 1,
+            "status": "active",
+            "title": "Research Loop",
+            "description": "Run a skill-driven research task, produce auditable outputs, and surface follow-up review items.",
+            "inputs": {"required": ["objective"], "optional": ["accepted_knowledge", "active_skills"]},
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {"id": "plan", "title": "Plan task", "kind": "produce_artifact", "actor": "agent", "agent_ref": "agent_orchestrator", "required": True},
+                {"id": "work", "title": "Execute research step", "kind": "agent_run", "actor": "agent", "agent_ref": "agent_orchestrator", "required": True},
+                {"id": "review", "title": "Review outputs", "kind": "review_gate", "actor": "human", "required": False},
+                {"id": "continue", "title": "Continue or close task", "kind": "decision", "actor": "human_or_agent", "required": False},
+            ],
+            "success_signals": ["run_created", "output_archived", "trace_available"],
+        },
+        {
+            "id": "reflection-loop",
+            "version": 1,
+            "status": "active",
+            "title": "Reflection Loop",
+            "description": "Reflect on workflow, skills, and document organization, then propose reviewable improvements.",
+            "inputs": {"required": ["objective"], "optional": ["recent_runs", "workflow_specs", "skills"]},
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {"id": "inspect", "title": "Inspect current process", "kind": "agent_run", "actor": "agent", "agent_ref": "agent_orchestrator", "required": True},
+                {"id": "propose", "title": "Propose process changes", "kind": "produce_contribution", "actor": "agent", "agent_ref": "agent_orchestrator", "required": False},
+                {"id": "review", "title": "Review process proposals", "kind": "review_gate", "actor": "human", "required": True},
+            ],
+            "success_signals": ["reflection_archived", "proposals_reviewable"],
         }
     ]
 

@@ -486,12 +486,50 @@ def test_task_creates_session_when_needed_and_runs_research(tmp_path):
     result = run_cli(tmp_path, "task", "Summarize current research direction", "--kernel", "simple")
     sessions = run_cli(tmp_path, "session", "list")
     runs = run_cli(tmp_path, "run", "list")
+    task_id = parse_id(result.stdout, "task_")
 
     assert result.returncode == 0, result.stderr
     assert "Created session:" in result.stdout
     assert "Task: Summarize current research direction" in result.stdout
+    assert f"Task ID: {task_id}" in result.stdout
+    assert "Workflow: research-loop" in result.stdout
     assert "Task run:" in result.stdout
+    assert (tmp_path / ".novi" / "tasks" / task_id / "task.yaml").exists()
     assert "research direction" in runs.stdout
+
+
+def test_task_list_inspect_and_continue_use_task_workflow(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Reflect on workflow", "--workflow", "reflection-loop", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+
+    list_result = run_cli(tmp_path, "task", "list")
+    inspect_result = run_cli(tmp_path, "task", "inspect", task_id)
+    continue_result = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    inspect_after_continue = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert task_id in list_result.stdout
+    assert "reflection-loop" in list_result.stdout
+    assert inspect_result.returncode == 0, inspect_result.stderr
+    assert f"Task: {task_id}" in inspect_result.stdout
+    assert "Workflow: reflection-loop" in inspect_result.stdout
+    assert "Runs:" in inspect_result.stdout
+    assert continue_result.returncode == 0, continue_result.stderr
+    assert "Continued task:" in continue_result.stdout
+    assert inspect_after_continue.stdout.count("run_") >= 2
+
+
+def test_task_close_marks_task_completed(tmp_path):
+    run_cli(tmp_path, "init")
+    task_id = parse_id(run_cli(tmp_path, "task", "Closeable task", "--kernel", "simple").stdout, "task_")
+
+    close_result = run_cli(tmp_path, "task", "close", task_id)
+    inspect_result = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert close_result.returncode == 0, close_result.stderr
+    assert f"Closed task: {task_id}" in close_result.stdout
+    assert "Status: completed" in inspect_result.stdout
 
 
 def test_top_level_trace_and_output_alias_latest_run(tmp_path):
@@ -905,6 +943,41 @@ def test_ingest_accepts_multiple_sources_hint_and_agent_proposals(tmp_path):
     assert len(contributions) == 2
     assert any("target: .novi/knowledge/topics/current.md" in text for text in contributions)
     assert any("target: .novi/knowledge/index.md" in text for text in contributions)
+
+
+def test_ingest_can_attach_processing_run_to_task(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage('{\"analysis_markdown\":\"# Analysis\\\\n\\\\nAttached.\",\"proposals\":[],\"questions_for_human\":[]}')]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    task_id = parse_id(run_cli(tmp_path, "task", "Investigate contact priors", "--kernel", "simple").stdout, "task_")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nAttached to task.\n", encoding="utf-8")
+
+    result = run_cli(tmp_path, "ingest", str(note), "--task", task_id)
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    assert run_id in inspect.stdout
+    assert inspect.stdout.count("run_") >= 2
 
 
 def test_ingest_without_agent_proposals_records_questions_for_human(tmp_path):

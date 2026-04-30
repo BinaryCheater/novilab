@@ -111,6 +111,7 @@ def init_workspace(root):
         "skills",
         "agents",
         "tools",
+        "tasks",
     ]:
         (base / relative).mkdir(parents=True, exist_ok=True)
 
@@ -218,6 +219,51 @@ def active_session(root):
     if not session_id:
         raise RuntimeError("No active session. Run `novi session create <title>` first.")
     return load_session(root, session_id)
+
+
+def task_dir(root, task_id):
+    return require_workspace(root) / "tasks" / task_id
+
+
+def create_task(root, objective, workflow_id="research-loop", session_id=None):
+    base = require_workspace(root)
+    now = utc_now()
+    task_id = new_id("task")
+    path = base / "tasks" / task_id
+    path.mkdir(parents=True, exist_ok=True)
+    record = {
+        "id": task_id,
+        "objective": objective,
+        "workflow_id": workflow_id,
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+        "session_id": session_id,
+        "run_ids": [],
+        "current_run_id": None,
+        "summary_path": str(path / "summary.md"),
+    }
+    write_yaml(path / "task.yaml", record)
+    (path / "summary.md").write_text(f"# {objective}\n\nWorkflow: {workflow_id}\n", encoding="utf-8")
+    return record
+
+
+def list_tasks(root):
+    base = require_workspace(root)
+    return [read_yaml(path, {}) for path in sorted((base / "tasks").glob("*/task.yaml"))]
+
+
+def load_task(root, task_id):
+    task = read_yaml(task_dir(root, task_id) / "task.yaml", {})
+    if not task:
+        raise RuntimeError(f"Task not found: {task_id}")
+    return task
+
+
+def save_task(root, task):
+    task["updated_at"] = utc_now()
+    write_yaml(task_dir(root, task["id"]) / "task.yaml", task)
+    return task
 
 
 def list_sessions(root):

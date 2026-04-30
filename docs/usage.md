@@ -119,6 +119,27 @@ novi task "整理 contact persistence 相关知识，并提出下一步实验"
 
 `task` 会在没有 active session 时自动创建 session，启动一个 research run，记录 session messages，并提示下一步 trace/review 命令。当前它是单次 run 入口，后续会扩展为可 resume 的长期 task loop。
 
+`task` 是目标，`workflow` 是推进方式，`run` 是一次执行记录。默认 workflow 是 `research-loop`，也可以显式选择：
+
+```bash
+novi task "反思当前文档组织和 skill 使用方式" --workflow reflection-loop
+```
+
+查看和继续任务：
+
+```bash
+novi task list
+novi task inspect task_...
+novi task continue task_...
+novi task close task_...
+```
+
+导入文档时可以挂到已有任务上，让文档处理 run 成为同一个任务链路的一部分：
+
+```bash
+novi ingest notes.md --task task_... --hint "整理进这个任务相关的知识库上下文"
+```
+
 ### 6.1 单次 run
 
 使用 deterministic local kernel：
