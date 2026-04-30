@@ -34,6 +34,12 @@ def test_project_requires_python_311_for_deepagents_adapter():
     assert "deepagents" in pyproject
 
 
+def test_deepagents_extra_supports_socks_proxy_environments():
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+
+    assert '"socksio' in pyproject or '"httpx[socks]' in pyproject
+
+
 def test_init_creates_local_workspace(tmp_path):
     result = run_cli(tmp_path, "init")
 
