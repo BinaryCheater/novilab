@@ -258,6 +258,26 @@ def test_ps_lists_active_session_recent_runs_and_pending_memory(tmp_path):
     assert "1" in result.stdout
 
 
+def test_ps_and_review_include_pending_contributions(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    ps_result = run_cli(tmp_path, "ps")
+    review_result = run_cli(tmp_path, "review")
+
+    assert ps_result.returncode == 0, ps_result.stderr
+    assert "Contributions" in ps_result.stdout
+    assert "1" in ps_result.stdout
+    assert review_result.returncode == 0, review_result.stderr
+    assert "Pending Review" in review_result.stdout
+    assert "Contributions" in review_result.stdout
+    assert contribution_id in review_result.stdout
+    assert "notes.md" in review_result.stdout
+
+
 def test_session_and_run_lists_use_operator_tables(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "table session")
@@ -276,6 +296,51 @@ def test_session_and_run_lists_use_operator_tables(tmp_path):
     assert "Status" in run_list.stdout
     assert "Objective" in run_list.stdout
     assert "table run" in run_list.stdout
+
+
+def test_import_creates_artifact_and_contribution_record(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+
+    result = run_cli(tmp_path, "import", str(note))
+
+    assert result.returncode == 0, result.stderr
+    contribution_id = parse_id(result.stdout, "contrib_")
+    artifact_id = parse_id(result.stdout, "art_")
+    contribution_path = tmp_path / ".novi" / "contributions" / f"{contribution_id}.yaml"
+    artifact_path = tmp_path / ".novi" / "artifacts" / f"{artifact_id}.yaml"
+    imported_copy = tmp_path / ".novi" / "artifacts" / "imports" / f"{artifact_id}-notes.md"
+
+    assert contribution_path.exists()
+    assert artifact_path.exists()
+    assert imported_copy.read_text(encoding="utf-8") == "# Notes\n\nUseful source note.\n"
+    assert "status: pending" in contribution_path.read_text()
+    assert artifact_id in contribution_path.read_text()
+
+
+def test_contribution_list_inspect_and_reject(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    list_result = run_cli(tmp_path, "contribution", "list")
+    inspect_result = run_cli(tmp_path, "contribution", "inspect", contribution_id)
+    reject_result = run_cli(tmp_path, "contribution", "reject", contribution_id)
+    review_after_reject = run_cli(tmp_path, "review")
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert contribution_id in list_result.stdout
+    assert "pending" in list_result.stdout
+    assert inspect_result.returncode == 0, inspect_result.stderr
+    assert f"Contribution: {contribution_id}" in inspect_result.stdout
+    assert "Source artifact:" in inspect_result.stdout
+    assert "notes.md" in inspect_result.stdout
+    assert reject_result.returncode == 0, reject_result.stderr
+    assert "rejected" in reject_result.stdout
+    assert contribution_id not in review_after_reject.stdout
 
 
 def test_run_start_creates_auditable_deterministic_records(tmp_path):

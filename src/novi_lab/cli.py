@@ -22,8 +22,12 @@ from .store import (
     append_session_message,
     create_session,
     decide_memory_candidate,
+    decide_contribution,
+    import_knowledge_file,
     init_workspace,
+    list_contributions,
     list_sessions,
+    load_contribution,
     load_run,
     load_session,
     memory_candidates,
@@ -411,6 +415,99 @@ def cmd_memory_reject(args):
     return 0
 
 
+def _pending_memory(root):
+    return [candidate for candidate in memory_candidates(root) if candidate.get("status") == "proposed"]
+
+
+def _pending_contributions(root):
+    return [contribution for contribution in list_contributions(root) if contribution.get("status") == "pending"]
+
+
+def cmd_review(args):
+    root = Path.cwd()
+    pending_memory = _pending_memory(root)
+    pending_contributions = _pending_contributions(root)
+    summary = Table(title="Pending Review")
+    summary.add_column("Queue")
+    summary.add_column("Count")
+    summary.add_row("Memory candidates", str(len(pending_memory)))
+    summary.add_row("Contributions", str(len(pending_contributions)))
+    summary.add_row("Workflow patches", "0")
+    summary.add_row("Approvals", "0")
+    console.print(summary)
+
+    if pending_memory:
+        memory_table = Table(title="Memory Candidates")
+        memory_table.add_column("ID")
+        memory_table.add_column("Status")
+        memory_table.add_column("Type")
+        memory_table.add_column("Claim")
+        for candidate in pending_memory:
+            memory_table.add_row(candidate["id"], candidate.get("status", "-"), candidate.get("type", "-"), candidate.get("claim", ""))
+        console.print(memory_table)
+
+    if pending_contributions:
+        contribution_table = Table(title="Contributions")
+        contribution_table.add_column("ID")
+        contribution_table.add_column("Status")
+        contribution_table.add_column("Type")
+        contribution_table.add_column("Title")
+        for contribution in pending_contributions:
+            contribution_table.add_row(
+                contribution["id"],
+                contribution.get("status", "-"),
+                contribution.get("type", "-"),
+                contribution.get("title", ""),
+            )
+        console.print(contribution_table)
+    return 0
+
+
+def cmd_import(args):
+    contribution, artifact = import_knowledge_file(Path.cwd(), args.source)
+    print(f"Imported {contribution['title']}")
+    print(f"Contribution: {contribution['id']}")
+    print(f"Artifact: {artifact['id']}")
+    return 0
+
+
+def cmd_contribution_list(args):
+    table = Table(title="Contributions")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Target")
+    table.add_column("Title")
+    for contribution in list_contributions(Path.cwd()):
+        table.add_row(
+            contribution["id"],
+            contribution.get("status", "-"),
+            contribution.get("type", "-"),
+            contribution.get("target", "-"),
+            contribution.get("title", ""),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_contribution_inspect(args):
+    contribution, _ = load_contribution(Path.cwd(), args.contribution_id)
+    print(f"Contribution: {contribution['id']}")
+    print(f"Status: {contribution.get('status', '-')}")
+    print(f"Type: {contribution.get('type', '-')}")
+    print(f"Title: {contribution.get('title', '')}")
+    print(f"Target: {contribution.get('target', '-')}")
+    print(f"Source: {contribution.get('source', '-')}")
+    print(f"Source artifact: {contribution.get('artifact_id', '-')}")
+    return 0
+
+
+def cmd_contribution_reject(args):
+    contribution = decide_contribution(Path.cwd(), args.contribution_id, "rejected")
+    print(f"Contribution {contribution['id']} rejected")
+    return 0
+
+
 def cmd_status(args):
     config = project_config(Path.cwd())
     print(f"Workspace: {config.get('workspace')}")
@@ -470,11 +567,14 @@ def cmd_ps(args):
         run_table.add_row(run["id"], run["status"], run["type"], run["objective"])
     console.print(run_table)
 
-    pending_memory = [candidate for candidate in memory_candidates(root) if candidate.get("status") == "proposed"]
+    pending_memory = _pending_memory(root)
+    pending_contributions = _pending_contributions(root)
     pending_table = Table(title="Pending review")
     pending_table.add_column("Queue")
     pending_table.add_column("Count")
     pending_table.add_row("Memory candidates", str(len(pending_memory)))
+    pending_table.add_row("Contributions", str(len(pending_contributions)))
+    pending_table.add_row("Workflow patches", "0")
     pending_table.add_row("Approvals", "0")
     console.print(pending_table)
     return 0
@@ -542,6 +642,13 @@ def build_parser():
 
     ps_parser = subparsers.add_parser("ps")
     ps_parser.set_defaults(func=cmd_ps)
+
+    import_parser = subparsers.add_parser("import")
+    import_parser.add_argument("source")
+    import_parser.set_defaults(func=cmd_import)
+
+    review_parser = subparsers.add_parser("review")
+    review_parser.set_defaults(func=cmd_review)
 
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
@@ -656,6 +763,17 @@ def build_parser():
     memory_reject = memory_sub.add_parser("reject")
     memory_reject.add_argument("candidate_id")
     memory_reject.set_defaults(func=cmd_memory_reject)
+
+    contribution_parser = subparsers.add_parser("contribution")
+    contribution_sub = contribution_parser.add_subparsers(dest="contribution_command", required=True)
+    contribution_list = contribution_sub.add_parser("list")
+    contribution_list.set_defaults(func=cmd_contribution_list)
+    contribution_inspect = contribution_sub.add_parser("inspect")
+    contribution_inspect.add_argument("contribution_id")
+    contribution_inspect.set_defaults(func=cmd_contribution_inspect)
+    contribution_reject = contribution_sub.add_parser("reject")
+    contribution_reject.add_argument("contribution_id")
+    contribution_reject.set_defaults(func=cmd_contribution_reject)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_sub = doctor_parser.add_subparsers(dest="doctor_command", required=True)

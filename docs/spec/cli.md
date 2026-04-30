@@ -455,8 +455,6 @@ long-running kernels exist.
 
 ### `novi review`
 
-Phase 1.5 candidate:
-
 Shows a unified pending review queue.
 
 Expected queues:
@@ -468,8 +466,9 @@ Expected queues:
 - approvals.
 
 This command should be the human review entrypoint once workflow and
-contribution records exist. Until then, `novi memory review` remains the
-implemented memory-specific path.
+contribution records exist. In the current Phase 1.5 prototype, it can show
+memory candidates, contribution imports, and placeholder counts for workflow
+patches and approvals. `novi memory review` remains the memory-specific path.
 
 ## Memory Commands
 
@@ -509,6 +508,9 @@ Expected behavior:
 - creates a contribution or import record;
 - does not automatically write accepted memory or accepted workflow state.
 
+Implementation note: the current Phase 1.5 prototype starts with local file
+paths. URL import can be added when web/network capture policy is ready.
+
 ### `novi contribution list`
 
 Lists imported or generated contributions by status, source, target, and title.
@@ -525,6 +527,15 @@ Accepts or merges a contribution according to its target type and policy.
 ### `novi contribution reject <contribution_id>`
 
 Rejects a contribution while preserving audit history.
+
+### `novi contribution accept <contribution_id>`
+
+Phase 1.5 candidate:
+
+Accepts or merges a contribution according to its target type and policy.
+Acceptance is intentionally deferred until merge behavior is explicit for each
+target, such as knowledge vault update, workflow patch, prompt/skill suggestion,
+or memory candidate creation.
 
 ## Workflow Commands
 

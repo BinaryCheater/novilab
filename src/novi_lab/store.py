@@ -1,4 +1,5 @@
 import json
+import shutil
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -96,6 +97,8 @@ def init_workspace(root):
         "runs",
         "memory/candidates",
         "artifacts",
+        "artifacts/imports",
+        "contributions",
         "approvals",
         "skills",
         "agents",
@@ -223,6 +226,75 @@ def create_run_dir(root, run_id):
 
 def load_run(root, run_id):
     return read_yaml(require_workspace(root) / "runs" / run_id / "run.yaml", {})
+
+
+def import_knowledge_file(root, source):
+    base = require_workspace(root)
+    source_path = Path(source)
+    if not source_path.is_file():
+        raise RuntimeError(f"Import source not found or not a file: {source}")
+    now = utc_now()
+    artifact_id = new_id("art")
+    contribution_id = new_id("contrib")
+    artifact_copy = base / "artifacts" / "imports" / f"{artifact_id}-{source_path.name}"
+    artifact_copy.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_path, artifact_copy)
+    artifact = {
+        "id": artifact_id,
+        "type": "knowledge_import",
+        "path": str(artifact_copy),
+        "source_path": str(source_path.resolve()),
+        "created_at": now,
+        "hash": content_hash(artifact_copy),
+        "hash_algorithm": "sha256",
+        "mime_type": "text/markdown" if source_path.suffix.lower() == ".md" else "application/octet-stream",
+        "size_bytes": artifact_copy.stat().st_size,
+    }
+    write_yaml(base / "artifacts" / f"{artifact_id}.yaml", artifact)
+    contribution = {
+        "id": contribution_id,
+        "type": "knowledge_import",
+        "status": "pending",
+        "title": source_path.name,
+        "source": str(source_path.resolve()),
+        "target": "knowledge_vault",
+        "artifact_id": artifact_id,
+        "created_at": now,
+        "updated_at": now,
+        "review_state": "pending",
+    }
+    write_yaml(base / "contributions" / f"{contribution_id}.yaml", contribution)
+    return contribution, artifact
+
+
+def list_contributions(root):
+    base = require_workspace(root)
+    contributions = []
+    for path in sorted((base / "contributions").glob("*.yaml")):
+        contributions.append(read_yaml(path, {}))
+    return contributions
+
+
+def load_contribution(root, contribution_id):
+    path = require_workspace(root) / "contributions" / f"{contribution_id}.yaml"
+    contribution = read_yaml(path, None)
+    if not contribution:
+        raise RuntimeError(f"Contribution not found: {contribution_id}")
+    return contribution, path
+
+
+def decide_contribution(root, contribution_id, status, reviewer="local_user"):
+    contribution, path = load_contribution(root, contribution_id)
+    if contribution.get("status") != "pending":
+        raise RuntimeError(f"Contribution is already {contribution.get('status')}: {contribution_id}")
+    now = utc_now()
+    contribution["status"] = status
+    contribution["review_state"] = status
+    contribution["reviewed_by"] = reviewer
+    contribution["reviewed_at"] = now
+    contribution["updated_at"] = now
+    write_yaml(path, contribution)
+    return contribution
 
 
 def memory_candidates(root):
