@@ -251,41 +251,59 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli memor
 推荐使用一条命令完成导入、必要时创建 session、执行 `document-merge`，并打印后续 review 命令：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli ingest notes.md \
-  --target .novi/knowledge/topics/physical-priors.md
+uv run --python 3.12 --extra dev --extra deepagents novi ingest notes.md \
+  --hint "可能和 contact priors / physical priors 有关"
 ```
 
-`ingest` 默认使用 DeepAgents/LLM kernel。执行时会在 stdout 打印阶段进度，例如加载 workflow、创建 run、等待模型响应、归档响应、创建 patch contribution，避免长模型调用看起来像卡死。
+`ingest` 默认使用 DeepAgents/LLM kernel。没有 `--target` 时，agent 会基于用户 hint、导入文档和 `.novi/knowledge/**/*.md` 的库上下文，自主提出零个、一个或多个文档变更 proposal。Novi 会把 proposal 转成 `document_patch` contribution，仍然由 `contribution inspect/check/accept` 控制是否写入。
+
+可以一次导入多个文件：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents novi ingest note-a.md note-b.md \
+  --hint "把这两份实验观察整理进知识库"
+```
+
+执行时会在 stdout 打印阶段进度，例如加载 workflow、创建 run、等待模型响应、归档响应、创建 patch contribution，避免长模型调用看起来像卡死。如果 agent 认为不应直接改库，会只产出 analysis/integration plan 和 `questions_for_human`。
+
+`--target` 是强约束选项，不是主路径。只有当你明确知道要合并到哪里时才需要：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents novi ingest notes.md \
+  --target .novi/knowledge/topics/physical-priors.md
+```
 
 如果已经导入过文档，也可以处理最新 pending import，不必复制 contribution id：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process \
-  --target .novi/knowledge/topics/physical-priors.md
+uv run --python 3.12 --extra dev --extra deepagents novi process \
+  --hint "让 agent 自己判断如何进入知识库"
 ```
 
 需要 deterministic fallback 时显式指定：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process contrib_... \
+uv run --python 3.12 --extra dev --extra deepagents novi process contrib_... \
   --workflow document-merge \
   --target .novi/knowledge/topics/physical-priors.md \
   --kernel simple
 ```
 
-这会创建一个 processing run、一个 analysis note artifact，以及一个 `document_patch` contribution。没有 `--target` 时只生成 analysis note，不生成可 apply patch。
+这会创建一个 processing run、一个 analysis note artifact，以及零个或多个 `document_patch` contribution。
 
-LLM 路径会把 WorkflowSpec、`document.curate`、`document.merge`、导入文档和目标文档拼成 `processing_prompt.md`。DeepAgents working-file tools 只能看到虚拟工作区，不能直接读取 Novi 项目里的 `.novi/...` 路径；prompt 中的 Imported Document 和 Target Document 是权威输入。模型应优先返回 virtual files：
+LLM 路径会把 WorkflowSpec、`document.curate`、`document.merge`、用户 hint、导入文档、库上下文和可选目标文档拼成 `processing_prompt.md`。DeepAgents working-file tools 只能看到虚拟工作区，不能直接读取 Novi 项目里的 `.novi/...` 路径；prompt 中的 Imported Document、Library Context 和 Target Document 是权威输入。模型应优先返回 virtual files：
 
 ```text
 /analysis_note.md
+/integration_plan.md
 /proposed.md
+/proposals.json
 ```
 
 如果执行环境不支持 virtual files，也可以返回 JSON：
 
 ```json
-{"analysis_markdown": "...", "proposed_markdown": "..."}
+{"analysis_markdown": "...", "integration_plan_markdown": "...", "proposals": [{"path": ".novi/knowledge/topics/example.md", "rationale": "...", "proposed_markdown": "..."}], "questions_for_human": []}
 ```
 
 Novi 会把 analysis 写成 artifact，把 proposed target document 转成 `document_patch` contribution。是否合并仍然由 `contribution check/accept` 控制。

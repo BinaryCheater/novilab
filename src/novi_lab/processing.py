@@ -120,15 +120,24 @@ def _extract_deepagents_outputs(result):
     normalized = {str(path).lstrip("/"): _deepagents_file_content(value) for path, value in files.items()}
     analysis = normalized.get("analysis_note.md") or normalized.get("analysis.md")
     proposed = normalized.get("proposed.md") or normalized.get("target.md")
+    integration_plan = normalized.get("integration_plan.md")
+    proposals_payload = normalized.get("proposals.json")
     response_text = ""
     if isinstance(result, dict) and result.get("messages"):
         response_text = _message_content(result["messages"][-1])
     elif isinstance(result, str):
         response_text = result
     payload = _extract_json_payload(response_text)
+    if proposals_payload:
+        proposals_file_payload = _extract_json_payload(proposals_payload)
+        if proposals_file_payload:
+            payload = {**payload, **proposals_file_payload}
     analysis = analysis or payload.get("analysis_markdown") or payload.get("analysis_note")
     proposed = proposed or payload.get("proposed_markdown") or payload.get("proposed_document")
-    return analysis, proposed, response_text
+    integration_plan = integration_plan or payload.get("integration_plan_markdown") or payload.get("integration_plan")
+    proposals = payload.get("proposals") or []
+    questions = payload.get("questions_for_human") or []
+    return analysis, proposed, response_text, integration_plan, proposals, questions
 
 
 def _skill_text(root, skill_id):
@@ -138,7 +147,19 @@ def _skill_text(root, skill_id):
     return ""
 
 
-def _processing_prompt(root, workflow_record, source_text, source_artifact, import_contribution, target, target_text):
+def _library_context(root, limit=40, chars_per_file=1200):
+    base = Path(root) / ".novi" / "knowledge"
+    if not base.exists():
+        return "(knowledge library is empty)"
+    sections = []
+    for path in sorted(base.rglob("*.md"))[:limit]:
+        relative = path.relative_to(Path(root))
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+        sections.extend([f"## {relative}", "", text[:chars_per_file] if text else "(empty)", ""])
+    return "\n".join(sections).strip() or "(knowledge library has no Markdown documents)"
+
+
+def _processing_prompt(root, workflow_record, imported_documents, target=None, target_text="", hint=None):
     skill_ids = []
     for step in workflow_record.get("steps", []):
         skill_ids.extend(step.get("skill_refs", []))
@@ -147,6 +168,20 @@ def _processing_prompt(root, workflow_record, source_text, source_artifact, impo
         text = _skill_text(root, skill_id)
         if text:
             skill_sections.extend([f"## Skill: {skill_id}", "", text.strip(), ""])
+    imported_sections = []
+    for index, item in enumerate(imported_documents, start=1):
+        imported_sections.extend(
+            [
+                f"# Imported Document {index}",
+                "",
+                f"- Import contribution: {item['contribution']['id']}",
+                f"- Source artifact: {item['artifact']['id']}",
+                f"- Title: {item['contribution'].get('title', item['contribution']['id'])}",
+                "",
+                item["text"].strip(),
+                "",
+            ]
+        )
     return "\n".join(
         [
             workflow_prompt(workflow_record).strip(),
@@ -157,27 +192,33 @@ def _processing_prompt(root, workflow_record, source_text, source_artifact, impo
             "Those tools only see the DeepAgents virtual workspace, not the Novi project workspace.",
             "The Imported Document and Target Document sections below are authoritative snapshots supplied by Novi.",
             "The Target Document section below is authoritative even when the named target path is not visible to your tools.",
-            "Write only the requested virtual output files; Novi will turn `/proposed.md` into a reviewable patch.",
+            "Do not directly edit the Novi knowledge library. Produce proposals; Novi will turn proposals into reviewable patch contributions.",
             "",
             "Return virtual files when possible:",
             "- /analysis_note.md: Markdown analysis note.",
+            "- /integration_plan.md: Markdown plan explaining how the library should be updated.",
             "- /proposed.md: Complete proposed target Markdown document when a target is provided.",
+            "- /proposals.json: JSON object with `proposals` for agent-directed library integration.",
             "",
             "If virtual files are unavailable, respond with JSON:",
-            '{"analysis_markdown": "...", "proposed_markdown": "..."}',
+            '{"analysis_markdown": "...", "integration_plan_markdown": "...", "proposals": [{"path": ".novi/knowledge/...", "rationale": "...", "proposed_markdown": "..."}], "questions_for_human": []}',
+            "",
+            "When no explicit target is provided, inspect the Library Context and decide whether to propose zero, one, or many document updates.",
+            "A proposal path must stay under `.novi/knowledge/`, `.novi/workflows/`, or `.novi/skills/`.",
+            "If the right integration is unclear, return no proposals and include `questions_for_human`.",
             "",
             "# Skills",
             "",
             *skill_sections,
-            "# Source Refs",
+            "# User Hint",
             "",
-            f"- Import contribution: {import_contribution['id']}",
-            f"- Source artifact: {source_artifact['id']}",
+            hint or "(none)",
             "",
-            "# Imported Document",
+            "# Library Context",
             "",
-            source_text.strip(),
+            _library_context(root),
             "",
+            *imported_sections,
             "# Target Document",
             "",
             f"- Target: {target or '-'}",
@@ -188,10 +229,10 @@ def _processing_prompt(root, workflow_record, source_text, source_artifact, impo
     )
 
 
-def _run_deepagents_processing(root, run_dir, run_record, workflow_record, source_text, source_artifact, import_contribution, target, target_text, progress=None):
+def _run_deepagents_processing(root, run_dir, run_record, workflow_record, imported_documents, target=None, target_text="", hint=None, progress=None):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
-    prompt = _processing_prompt(root, workflow_record, source_text, source_artifact, import_contribution, target, target_text)
+    prompt = _processing_prompt(root, workflow_record, imported_documents, target=target, target_text=target_text, hint=hint)
     prompt_path = Path(run_dir) / "processing_prompt.md"
     prompt_path.write_text(prompt, encoding="utf-8")
     participant = {
@@ -224,7 +265,7 @@ def _run_deepagents_processing(root, run_dir, run_record, workflow_record, sourc
         if progress:
             progress("Archiving DeepAgents response and virtual files.")
         _archive_deepagents_messages(run_dir, result)
-        analysis, proposed, response_text = _extract_deepagents_outputs(result)
+        analysis, proposed, response_text, integration_plan, proposals, questions = _extract_deepagents_outputs(result)
         (Path(run_dir) / "response.md").write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
         append_jsonl(
             Path(run_dir) / "model_calls.jsonl",
@@ -239,7 +280,7 @@ def _run_deepagents_processing(root, run_dir, run_record, workflow_record, sourc
                 "prompt_path": str(prompt_path),
             },
         )
-        return analysis, proposed
+        return analysis, proposed, integration_plan, proposals, questions
     except Exception as exc:
         append_jsonl(
             Path(run_dir) / "model_calls.jsonl",
@@ -275,7 +316,11 @@ def _step(workflow, step_id, status, artifact_ids=None, contribution_ids=None, s
     return result
 
 
-def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="deepagents", progress=None):
+def process_imported_document(root, contribution_id, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None):
+    return process_imported_documents(root, [contribution_id], workflow=workflow, target=target, kernel=kernel, progress=progress, hint=hint)
+
+
+def process_imported_documents(root, contribution_ids, workflow="document-merge", target=None, kernel="deepagents", progress=None, hint=None):
     if progress:
         progress(f"Loading workflow: {workflow}")
     workflow_record = load_workflow(root, workflow)
@@ -287,14 +332,22 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     session = active_session(root)
     if target:
         target_type_for_path(root, target)
-    if progress:
-        progress(f"Loading import contribution: {contribution_id}")
-    import_contribution, _ = load_contribution(root, contribution_id)
-    if import_contribution.get("type") != "knowledge_import":
-        raise RuntimeError(f"Contribution is not an import contribution: {contribution_id}")
-    source_artifact = load_artifact(root, import_contribution["artifact_id"])
-    source_path = Path(source_artifact["path"])
-    source_text = source_path.read_text(encoding="utf-8", errors="replace")
+    imported_documents = []
+    for contribution_id in contribution_ids:
+        if progress:
+            progress(f"Loading import contribution: {contribution_id}")
+        import_contribution, _ = load_contribution(root, contribution_id)
+        if import_contribution.get("type") != "knowledge_import":
+            raise RuntimeError(f"Contribution is not an import contribution: {contribution_id}")
+        source_artifact = load_artifact(root, import_contribution["artifact_id"])
+        source_path = Path(source_artifact["path"])
+        imported_documents.append(
+            {
+                "contribution": import_contribution,
+                "artifact": source_artifact,
+                "text": source_path.read_text(encoding="utf-8", errors="replace"),
+            }
+        )
     target_text = ""
     if target:
         target_path_for_prompt = Path(target)
@@ -309,7 +362,7 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
         "id": run_id,
         "session_id": session["id"],
         "type": "analysis",
-        "objective": f"Process import contribution {contribution_id}",
+        "objective": f"Process import contribution(s) {', '.join(contribution_ids)}",
         "status": "running",
         "created_at": now,
         "updated_at": now,
@@ -317,7 +370,8 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
         "kernel": kernel,
         "workflow_id": workflow_record["id"],
         "workflow_version": workflow_record.get("version"),
-        "source_contribution_id": contribution_id,
+        "source_contribution_id": contribution_ids[0] if len(contribution_ids) == 1 else None,
+        "source_contribution_ids": contribution_ids,
         "artifact_ids": [],
         "contribution_ids": [],
         "step_results": [],
@@ -330,17 +384,19 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
 
     model_analysis = None
     model_proposed = None
+    integration_plan = None
+    proposals = []
+    questions_for_human = []
     if kernel == "deepagents":
-        model_analysis, model_proposed = _run_deepagents_processing(
+        model_analysis, model_proposed, integration_plan, proposals, questions_for_human = _run_deepagents_processing(
             root,
             run_dir,
             run_record,
             workflow_record,
-            source_text,
-            source_artifact,
-            import_contribution,
-            target,
-            target_text,
+            imported_documents,
+            target=target,
+            target_text=target_text,
+            hint=hint,
             progress=progress,
         )
 
@@ -352,10 +408,11 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
         [
             "# Analysis Note",
             "",
-            f"- Import contribution: {contribution_id}",
-            f"- Source artifact: {source_artifact['id']}",
+            f"- Import contributions: {', '.join(contribution_ids)}",
+            f"- Source artifacts: {', '.join(item['artifact']['id'] for item in imported_documents)}",
             f"- Workflow: {workflow}",
             f"- Target: {target or '-'}",
+            f"- Hint: {hint or '-'}",
             "",
             "## Summary",
             "",
@@ -363,10 +420,14 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
             "",
             "## Imported Content",
             "",
-            source_text.strip(),
+            "\n\n".join(item["text"].strip() for item in imported_documents),
             "",
         ]
     )
+    if integration_plan:
+        analysis_text = f"{analysis_text.rstrip()}\n\n{integration_plan.strip()}\n"
+    if questions_for_human:
+        analysis_text = f"{analysis_text.rstrip()}\n\n## Questions for Human\n\n" + "\n".join(f"- {item}" for item in questions_for_human) + "\n"
     analysis_path.write_text(analysis_text, encoding="utf-8")
     analysis_record = {
         "id": analysis_artifact_id,
@@ -385,7 +446,7 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     run_record["step_results"].append(_step(workflow_record, "analyze", "completed", artifact_ids=[analysis_artifact_id]))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ArtifactCreated", session["id"], "Analysis note artifact created.", {"artifact_id": analysis_artifact_id}))
 
-    patch_contribution = None
+    patch_contributions = []
     if target:
         if progress:
             progress("Creating reviewable document patch contribution.")
@@ -393,41 +454,68 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
         target_text = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
         proposed = model_proposed or _append_import_section(
             target_text,
-            import_contribution,
-            source_text,
-            source_artifact["id"],
+            imported_documents[0]["contribution"],
+            "\n\n".join(item["text"].strip() for item in imported_documents),
+            imported_documents[0]["artifact"]["id"],
             analysis_artifact_id,
         )
         patch_contribution = create_document_patch_contribution(
             root,
-            title=f"Merge {import_contribution.get('title', contribution_id)} into {target_path.name}",
+            title=f"Merge imported document(s) into {target_path.name}",
             target=target_path,
             proposed_content=proposed,
             source_refs=[
-                {"type": "contribution", "id": contribution_id},
-                {"type": "artifact", "id": source_artifact["id"]},
+                *[{"type": "contribution", "id": item["contribution"]["id"]} for item in imported_documents],
+                *[{"type": "artifact", "id": item["artifact"]["id"]} for item in imported_documents],
                 {"type": "run", "id": run_id},
                 {"type": "artifact", "id": analysis_artifact_id},
             ],
             source_actor="agent",
-            rationale=f"Generated by {workflow} from import contribution {contribution_id}.",
+            rationale=f"Generated by {workflow} from import contribution(s) {', '.join(contribution_ids)}.",
         )
-        run_record["contribution_ids"].append(patch_contribution["id"])
+        patch_contributions.append(patch_contribution)
+    elif proposals:
+        if progress:
+            progress(f"Creating {len(proposals)} agent-proposed patch contribution(s).")
+        for proposal in proposals:
+            proposal_target = proposal.get("path") or proposal.get("target") or proposal.get("target_path")
+            proposed_content = proposal.get("proposed_markdown") or proposal.get("proposed_document")
+            if not proposal_target or not proposed_content:
+                continue
+            patch_contributions.append(
+                create_document_patch_contribution(
+                    root,
+                    title=f"Agent proposal for {Path(proposal_target).name}",
+                    target=Path(root) / proposal_target,
+                    proposed_content=proposed_content,
+                    source_refs=[
+                        *[{"type": "contribution", "id": item["contribution"]["id"]} for item in imported_documents],
+                        *[{"type": "artifact", "id": item["artifact"]["id"]} for item in imported_documents],
+                        {"type": "run", "id": run_id},
+                        {"type": "artifact", "id": analysis_artifact_id},
+                    ],
+                    source_actor="agent",
+                    rationale=proposal.get("rationale") or integration_plan or f"Generated by {workflow}.",
+                )
+            )
+    if patch_contributions:
+        run_record["contribution_ids"].extend(item["id"] for item in patch_contributions)
         run_record["step_results"].append(_step(workflow_record, "choose_target", "skipped", skipped_reason="target_provided"))
-        run_record["step_results"].append(_step(workflow_record, "draft_patch", "completed", contribution_ids=[patch_contribution["id"]]))
-        run_record["step_results"].append(_step(workflow_record, "check_patch", "pending", contribution_ids=[patch_contribution["id"]]))
-        run_record["step_results"].append(_step(workflow_record, "review_patch", "pending", contribution_ids=[patch_contribution["id"]]))
-        run_record["step_results"].append(_step(workflow_record, "apply_patch", "pending", contribution_ids=[patch_contribution["id"]]))
-        append_jsonl(
-            run_dir / "events.jsonl",
-            _event(
-                run_id,
-                "ContributionProposed",
-                session["id"],
-                "Document patch contribution proposed.",
-                {"contribution_id": patch_contribution["id"]},
-            ),
-        )
+        run_record["step_results"].append(_step(workflow_record, "draft_patch", "completed", contribution_ids=[item["id"] for item in patch_contributions]))
+        run_record["step_results"].append(_step(workflow_record, "check_patch", "pending", contribution_ids=[item["id"] for item in patch_contributions]))
+        run_record["step_results"].append(_step(workflow_record, "review_patch", "pending", contribution_ids=[item["id"] for item in patch_contributions]))
+        run_record["step_results"].append(_step(workflow_record, "apply_patch", "pending", contribution_ids=[item["id"] for item in patch_contributions]))
+        for patch_contribution in patch_contributions:
+            append_jsonl(
+                run_dir / "events.jsonl",
+                _event(
+                    run_id,
+                    "ContributionProposed",
+                    session["id"],
+                    "Document patch contribution proposed.",
+                    {"contribution_id": patch_contribution["id"]},
+                ),
+            )
     else:
         run_record["step_results"].append(_step(workflow_record, "choose_target", "pending", skipped_reason="target_missing"))
         run_record["step_results"].append(_step(workflow_record, "draft_patch", "skipped", skipped_reason="target_missing"))
@@ -441,11 +529,11 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
                 f"# Run {run_id}",
                 "",
                 "Status: completed",
-                f"Objective: Process import contribution {contribution_id}",
+                f"Objective: Process import contribution(s) {', '.join(contribution_ids)}",
                 f"Workflow: {workflow_record['id']} v{workflow_record.get('version')}",
                 "",
                 f"Analysis artifact: {analysis_artifact_id}",
-                f"Patch contribution: {patch_contribution['id'] if patch_contribution else '-'}",
+                f"Patch contributions: {', '.join(item['id'] for item in patch_contributions) if patch_contributions else '-'}",
                 "",
             ]
         ),
@@ -462,5 +550,7 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     return {
         "run": run_record,
         "analysis_artifact": analysis_record,
-        "patch_contribution": patch_contribution,
+        "patch_contribution": patch_contributions[0] if patch_contributions else None,
+        "patch_contributions": patch_contributions,
+        "questions_for_human": questions_for_human,
     }

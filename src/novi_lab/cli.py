@@ -15,7 +15,7 @@ from .agents import (
     remove_agent_list_value,
     set_agent_model,
 )
-from .processing import process_imported_document
+from .processing import process_imported_document, process_imported_documents
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
@@ -568,15 +568,23 @@ def _print_process_result(result):
     print(f"Run: {result['run']['id']}")
     print(f"Kernel: {result['run'].get('kernel', '-')}")
     print(f"Analysis artifact: {result['analysis_artifact']['id']}")
-    if result["patch_contribution"]:
-        patch_id = result["patch_contribution"]["id"]
-        print(f"Patch contribution: {patch_id}")
+    patch_contributions = result.get("patch_contributions") or ([result["patch_contribution"]] if result.get("patch_contribution") else [])
+    if patch_contributions:
+        print("Patch contributions:")
+        for patch in patch_contributions:
+            print(f"Patch contribution: {patch['id']}")
         print("Next:")
-        print(f"- novi contribution inspect {patch_id}")
-        print(f"- novi contribution check {patch_id}")
-        print(f"- novi contribution accept {patch_id}")
+        for patch in patch_contributions:
+            patch_id = patch["id"]
+            print(f"- novi contribution inspect {patch_id}")
+            print(f"- novi contribution check {patch_id}")
+            print(f"- novi contribution accept {patch_id}")
     else:
         print("No patch contribution created")
+    if result.get("questions_for_human"):
+        print("Questions for human:")
+        for question in result["questions_for_human"]:
+            print(f"- {question}")
 
 
 def cmd_process(args):
@@ -592,6 +600,7 @@ def cmd_process(args):
         target=args.target,
         kernel=args.kernel,
         progress=_progress,
+        hint=getattr(args, "hint", None),
     )
     _print_process_result(result)
     return 0
@@ -605,24 +614,29 @@ def cmd_ingest(args):
     except RuntimeError:
         session = create_session(root, args.session_title)
         print(f"Created session: {session['id']}", flush=True)
-    contribution, artifact = import_knowledge_file(root, args.source)
-    print(f"Imported: {contribution['id']}")
-    print(f"Import artifact: {artifact['id']}")
-    result = process_imported_document(
+    contributions = []
+    for source in args.sources:
+        contribution, artifact = import_knowledge_file(root, source)
+        contributions.append(contribution)
+        print(f"Imported: {contribution['id']}")
+        print(f"Import artifact: {artifact['id']}")
+    result = process_imported_documents(
         root,
-        contribution["id"],
+        [item["id"] for item in contributions],
         workflow=args.workflow,
         target=args.target,
         kernel=args.kernel,
         progress=_progress,
+        hint=args.hint,
     )
     _print_process_result(result)
     if args.accept:
-        patch = result.get("patch_contribution")
-        if not patch:
+        patches = result.get("patch_contributions") or []
+        if not patches:
             raise RuntimeError("No patch contribution was created; nothing to accept.")
-        accepted = apply_patch_contribution(root, patch["id"])
-        print(f"Accepted and merged: {accepted['id']}")
+        for patch in patches:
+            accepted = apply_patch_contribution(root, patch["id"])
+            print(f"Accepted and merged: {accepted['id']}")
     return 0
 
 
@@ -915,8 +929,9 @@ def build_parser():
     import_parser.set_defaults(func=cmd_import)
 
     ingest_parser = subparsers.add_parser("ingest")
-    ingest_parser.add_argument("source")
+    ingest_parser.add_argument("sources", nargs="+")
     ingest_parser.add_argument("--target")
+    ingest_parser.add_argument("--hint")
     ingest_parser.add_argument("--workflow", default="document-merge")
     ingest_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     ingest_parser.add_argument("--session-title", default="document ingest")
@@ -927,6 +942,7 @@ def build_parser():
     process_parser.add_argument("contribution_id", nargs="?")
     process_parser.add_argument("--workflow", default="document-merge")
     process_parser.add_argument("--target")
+    process_parser.add_argument("--hint")
     process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     process_parser.set_defaults(func=cmd_process)
 

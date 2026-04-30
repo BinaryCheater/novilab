@@ -774,6 +774,108 @@ def test_ingest_imports_processes_and_prints_review_commands(tmp_path):
     assert "Merged from ingest." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
 
 
+def test_ingest_accepts_multiple_sources_hint_and_agent_proposals(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "",
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        self.system_prompt = system_prompt",
+                "",
+                "    def invoke(self, payload):",
+                "        assert 'User Hint' in self.system_prompt",
+                "        assert 'contact priors' in self.system_prompt",
+                "        assert 'Library Context' in self.system_prompt",
+                "        assert 'current.md' in self.system_prompt",
+                "        assert 'Imported Document 1' in self.system_prompt",
+                "        assert 'Imported Document 2' in self.system_prompt",
+                "        return {'messages': [FakeMessage(json.dumps({",
+                "            'analysis_markdown': '# Analysis\\n\\nTwo notes should be integrated together.',",
+                "            'integration_plan_markdown': '# Integration Plan\\n\\nUpdate current notes and add an index.',",
+                "            'proposals': [",
+                "                {'path': '.novi/knowledge/topics/current.md', 'rationale': 'Merge related contact note.', 'proposed_markdown': '# Current\\n\\nMerged contact priors.'},",
+                "                {'path': '.novi/knowledge/index.md', 'rationale': 'Expose new topic.', 'proposed_markdown': '# Index\\n\\n- [[topics/current.md]]'},",
+                "            ],",
+                "            'questions_for_human': []",
+                "        }))]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    existing = tmp_path / ".novi" / "knowledge" / "topics" / "current.md"
+    existing.write_text("# Current\n\nExisting contact notes.\n", encoding="utf-8")
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("# First\n\nContact persistence.\n", encoding="utf-8")
+    second.write_text("# Second\n\nSymmetry prior.\n", encoding="utf-8")
+
+    result = run_cli(tmp_path, "ingest", str(first), str(second), "--hint", "contact priors")
+
+    assert result.returncode == 0, result.stderr
+    assert "Imported:" in result.stdout
+    assert "Patch contributions:" in result.stdout
+    assert result.stdout.count("Patch contribution:") == 2
+    contributions = [
+        path.read_text(encoding="utf-8")
+        for path in sorted((tmp_path / ".novi" / "contributions").glob("*.yaml"))
+        if "type: document_patch" in path.read_text(encoding="utf-8")
+    ]
+    assert len(contributions) == 2
+    assert any("target: .novi/knowledge/topics/current.md" in text for text in contributions)
+    assert any("target: .novi/knowledge/index.md" in text for text in contributions)
+
+
+def test_ingest_without_agent_proposals_records_questions_for_human(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "",
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(json.dumps({",
+                "            'analysis_markdown': '# Analysis\\n\\nNeeds human direction.',",
+                "            'integration_plan_markdown': '# Integration Plan\\n\\nNo safe library edit yet.',",
+                "            'proposals': [],",
+                "            'questions_for_human': ['Should this be long-term knowledge or session context?']",
+                "        }))]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    note = tmp_path / "unclear.md"
+    note.write_text("# Unclear\n\nAmbiguous source.\n", encoding="utf-8")
+
+    result = run_cli(tmp_path, "ingest", str(note))
+
+    assert result.returncode == 0, result.stderr
+    assert "No patch contribution created" in result.stdout
+    assert "Questions for human:" in result.stdout
+    assert "long-term knowledge" in result.stdout
+    assert "document_patch" not in run_cli(tmp_path, "contribution", "list").stdout
+
+
 def test_process_deepagents_accepts_json_output_protocol(tmp_path):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(
