@@ -18,6 +18,7 @@ from .agents import (
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
+    accepted_knowledge,
     active_session,
     append_session_message,
     create_session,
@@ -25,14 +26,19 @@ from .store import (
     decide_contribution,
     import_knowledge_file,
     init_workspace,
+    list_artifacts,
     list_contributions,
     list_sessions,
+    load_accepted_knowledge,
+    load_artifact,
     load_contribution,
+    load_memory_candidate,
     load_run,
     load_session,
     memory_candidates,
     project_config,
     read_jsonl,
+    read_yaml,
     require_workspace,
     update_project_config,
 )
@@ -360,6 +366,13 @@ def cmd_run_trace(args):
     run_id = _run_id_arg(Path.cwd(), args.run_id)
     run_dir = _run_dir(Path.cwd(), run_id)
     print(f"Run: {run_id}")
+    context = read_yaml(run_dir / "context_pack.yaml", {})
+    print("Accepted knowledge:")
+    refs = context.get("accepted_knowledge_refs", [])
+    if not refs:
+        print("- none")
+    for ref in refs:
+        print(f"- {ref.get('id')} {ref.get('source_artifact_id', '-')} {ref.get('title', '-')}")
     print("Model calls:")
     for call in read_jsonl(run_dir / "model_calls.jsonl"):
         provider = call.get("model_provider") or "-"
@@ -400,6 +413,44 @@ def cmd_memory_review(args):
         return 0
     for candidate in candidates:
         print(f"{candidate['id']}\t{candidate['status']}\t{candidate['type']}\t{candidate['claim']}")
+    return 0
+
+
+def cmd_memory_list(args):
+    table = Table(title="Memory Candidates")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Status")
+    table.add_column("Type")
+    table.add_column("Subject")
+    table.add_column("Claim")
+    for candidate in memory_candidates(Path.cwd()):
+        table.add_row(
+            candidate["id"],
+            candidate.get("status", "-"),
+            candidate.get("type", "-"),
+            candidate.get("subject", "-"),
+            candidate.get("claim", ""),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_memory_show(args):
+    candidate, _ = load_memory_candidate(Path.cwd(), args.candidate_id)
+    print(f"Memory candidate: {candidate['id']}")
+    print(f"Status: {candidate.get('status', '-')}")
+    print(f"Type: {candidate.get('type', '-')}")
+    print(f"Subject: {candidate.get('subject', '-')}")
+    print(f"Scope: {candidate.get('scope', '-')}")
+    print(f"Confidence: {candidate.get('confidence', '-')}")
+    print(f"Proposed by: {candidate.get('proposed_by', '-')}")
+    print(f"Reviewed by: {candidate.get('reviewed_by', '-')}")
+    print(f"Reviewed at: {candidate.get('reviewed_at', '-')}")
+    print("Claim:")
+    print(candidate.get("claim", ""))
+    print("Evidence:")
+    for evidence in candidate.get("evidence", []):
+        print(f"- Run: {evidence.get('run_id')} Artifact: {evidence.get('artifact_id')}")
     return 0
 
 
@@ -471,6 +522,69 @@ def cmd_import(args):
     return 0
 
 
+def cmd_artifact_list(args):
+    table = Table(title="Artifacts")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Type")
+    table.add_column("Run")
+    table.add_column("Path")
+    for artifact in list_artifacts(Path.cwd()):
+        table.add_row(
+            artifact["id"],
+            artifact.get("type", "-"),
+            artifact.get("run_id", "-"),
+            artifact.get("path", "-"),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_artifact_show(args):
+    artifact = load_artifact(Path.cwd(), args.artifact_id)
+    print(f"Artifact: {artifact['id']}")
+    print(f"Type: {artifact.get('type', '-')}")
+    print(f"Path: {artifact.get('path', '-')}")
+    print(f"Run: {artifact.get('run_id', '-')}")
+    print(f"Produced by: {artifact.get('produced_by', '-')}")
+    print(f"Source path: {artifact.get('source_path', '-')}")
+    print(f"MIME type: {artifact.get('mime_type', '-')}")
+    print(f"Size bytes: {artifact.get('size_bytes', '-')}")
+    print(f"SHA256: {artifact.get('hash', '-')}")
+    return 0
+
+
+def cmd_knowledge_list(args):
+    table = Table(title="Accepted Knowledge")
+    table.add_column("ID", no_wrap=True)
+    table.add_column("Title")
+    table.add_column("Source Artifact")
+    table.add_column("Reviewed At")
+    for record in accepted_knowledge(Path.cwd()):
+        table.add_row(
+            record["id"],
+            record.get("title", "-"),
+            record.get("source_artifact_id", "-"),
+            record.get("reviewed_at", "-"),
+        )
+    console.print(table)
+    return 0
+
+
+def cmd_knowledge_show(args):
+    record = load_accepted_knowledge(Path.cwd(), args.knowledge_id)
+    print(f"Knowledge: {record['id']}")
+    print(f"Title: {record.get('title', '-')}")
+    print(f"Source artifact: {record.get('source_artifact_id', '-')}")
+    print(f"Raw path: {record.get('raw_path', '-')}")
+    print(f"Accepted path: {record.get('accepted_path', '-')}")
+    print(f"Reviewed by: {record.get('reviewed_by', '-')}")
+    print(f"Reviewed at: {record.get('reviewed_at', '-')}")
+    if record.get("content"):
+        print("")
+        print(record["content"].strip())
+    return 0
+
+
 def cmd_contribution_list(args):
     table = Table(title="Contributions")
     table.add_column("ID", no_wrap=True)
@@ -505,6 +619,14 @@ def cmd_contribution_inspect(args):
 def cmd_contribution_reject(args):
     contribution = decide_contribution(Path.cwd(), args.contribution_id, "rejected")
     print(f"Contribution {contribution['id']} rejected")
+    return 0
+
+
+def cmd_contribution_accept(args):
+    contribution = decide_contribution(Path.cwd(), args.contribution_id, "accepted")
+    print(f"Contribution {contribution['id']} accepted")
+    if contribution.get("accepted_knowledge_path"):
+        print(f"Accepted knowledge: {contribution['accepted_knowledge_path']}")
     return 0
 
 
@@ -650,6 +772,22 @@ def build_parser():
     review_parser = subparsers.add_parser("review")
     review_parser.set_defaults(func=cmd_review)
 
+    artifact_parser = subparsers.add_parser("artifact")
+    artifact_sub = artifact_parser.add_subparsers(dest="artifact_command", required=True)
+    artifact_list = artifact_sub.add_parser("list")
+    artifact_list.set_defaults(func=cmd_artifact_list)
+    artifact_show = artifact_sub.add_parser("show")
+    artifact_show.add_argument("artifact_id")
+    artifact_show.set_defaults(func=cmd_artifact_show)
+
+    knowledge_parser = subparsers.add_parser("knowledge")
+    knowledge_sub = knowledge_parser.add_subparsers(dest="knowledge_command", required=True)
+    knowledge_list = knowledge_sub.add_parser("list")
+    knowledge_list.set_defaults(func=cmd_knowledge_list)
+    knowledge_show = knowledge_sub.add_parser("show")
+    knowledge_show.add_argument("knowledge_id")
+    knowledge_show.set_defaults(func=cmd_knowledge_show)
+
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
     configure_model = configure_sub.add_parser("model")
@@ -755,6 +893,11 @@ def build_parser():
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)
+    memory_list = memory_sub.add_parser("list")
+    memory_list.set_defaults(func=cmd_memory_list)
+    memory_show = memory_sub.add_parser("show")
+    memory_show.add_argument("candidate_id")
+    memory_show.set_defaults(func=cmd_memory_show)
     memory_review = memory_sub.add_parser("review")
     memory_review.set_defaults(func=cmd_memory_review)
     memory_accept = memory_sub.add_parser("accept")
@@ -774,6 +917,9 @@ def build_parser():
     contribution_reject = contribution_sub.add_parser("reject")
     contribution_reject.add_argument("contribution_id")
     contribution_reject.set_defaults(func=cmd_contribution_reject)
+    contribution_accept = contribution_sub.add_parser("accept")
+    contribution_accept.add_argument("contribution_id")
+    contribution_accept.set_defaults(func=cmd_contribution_accept)
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_sub = doctor_parser.add_subparsers(dest="doctor_command", required=True)

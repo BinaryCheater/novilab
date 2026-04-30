@@ -99,6 +99,11 @@ def init_workspace(root):
         "artifacts",
         "artifacts/imports",
         "contributions",
+        "knowledge",
+        "knowledge/raw",
+        "knowledge/accepted",
+        "knowledge/analysis",
+        "knowledge/syntheses",
         "approvals",
         "skills",
         "agents",
@@ -228,6 +233,44 @@ def load_run(root, run_id):
     return read_yaml(require_workspace(root) / "runs" / run_id / "run.yaml", {})
 
 
+def list_artifacts(root):
+    base = require_workspace(root)
+    artifacts = []
+    for path in sorted((base / "artifacts").glob("*.yaml")):
+        artifacts.append(read_yaml(path, {}))
+    for path in sorted((base / "runs").glob("*/artifacts/*.yaml")):
+        artifacts.append(read_yaml(path, {}))
+    return artifacts
+
+
+def load_artifact(root, artifact_id):
+    base = require_workspace(root)
+    paths = [base / "artifacts" / f"{artifact_id}.yaml", *sorted((base / "runs").glob(f"*/artifacts/{artifact_id}.yaml"))]
+    for path in paths:
+        artifact = read_yaml(path, None)
+        if artifact:
+            return artifact
+    raise RuntimeError(f"Artifact not found: {artifact_id}")
+
+
+def accepted_knowledge(root):
+    base = require_workspace(root)
+    records = []
+    for record in read_jsonl(base / "knowledge" / "index.jsonl"):
+        accepted_path = Path(record.get("accepted_path", ""))
+        record = dict(record)
+        record["content"] = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
+        records.append(record)
+    return records
+
+
+def load_accepted_knowledge(root, knowledge_id):
+    for record in accepted_knowledge(root):
+        if record.get("id") == knowledge_id:
+            return record
+    raise RuntimeError(f"Accepted knowledge not found: {knowledge_id}")
+
+
 def import_knowledge_file(root, source):
     base = require_workspace(root)
     source_path = Path(source)
@@ -283,16 +326,65 @@ def load_contribution(root, contribution_id):
     return contribution, path
 
 
+def _write_accepted_knowledge(root, contribution, reviewer, reviewed_at):
+    if contribution.get("type") != "knowledge_import":
+        return None
+    base = require_workspace(root)
+    artifact = load_artifact(root, contribution["artifact_id"])
+    source_path = Path(artifact["path"])
+    raw_path = base / "knowledge" / "raw" / f"{contribution['id']}-{Path(contribution['title']).name}"
+    accepted_path = base / "knowledge" / "accepted" / f"{contribution['id']}.md"
+    raw_path.parent.mkdir(parents=True, exist_ok=True)
+    accepted_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source_path, raw_path)
+    raw_text = raw_path.read_text(encoding="utf-8", errors="replace")
+    accepted_text = "\n".join(
+        [
+            "# Accepted Knowledge",
+            "",
+            f"- Contribution: {contribution['id']}",
+            f"- Source artifact: {artifact['id']}",
+            f"- Source path: {artifact.get('source_path', '-')}",
+            f"- Reviewed by: {reviewer}",
+            f"- Reviewed at: {reviewed_at}",
+            "",
+            "## Content",
+            "",
+            raw_text.strip(),
+            "",
+        ]
+    )
+    accepted_path.write_text(accepted_text, encoding="utf-8")
+    record = {
+        "id": contribution["id"],
+        "type": "accepted_knowledge",
+        "title": contribution.get("title"),
+        "source_artifact_id": artifact["id"],
+        "raw_path": str(raw_path),
+        "accepted_path": str(accepted_path),
+        "reviewed_by": reviewer,
+        "reviewed_at": reviewed_at,
+    }
+    append_jsonl(base / "knowledge" / "index.jsonl", record)
+    return record
+
+
 def decide_contribution(root, contribution_id, status, reviewer="local_user"):
     contribution, path = load_contribution(root, contribution_id)
     if contribution.get("status") != "pending":
         raise RuntimeError(f"Contribution is already {contribution.get('status')}: {contribution_id}")
     now = utc_now()
+    knowledge_record = None
+    if status == "accepted":
+        knowledge_record = _write_accepted_knowledge(root, contribution, reviewer, now)
     contribution["status"] = status
     contribution["review_state"] = status
     contribution["reviewed_by"] = reviewer
     contribution["reviewed_at"] = now
     contribution["updated_at"] = now
+    if knowledge_record:
+        contribution["accepted_knowledge_path"] = knowledge_record["accepted_path"]
+        contribution["knowledge_index_id"] = knowledge_record["id"]
     write_yaml(path, contribution)
     return contribution
 

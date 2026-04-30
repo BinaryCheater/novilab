@@ -319,6 +319,26 @@ def test_import_creates_artifact_and_contribution_record(tmp_path):
     assert artifact_id in contribution_path.read_text()
 
 
+def test_artifact_list_and_show_imported_artifact(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    artifact_id = parse_id(import_result.stdout, "art_")
+
+    list_result = run_cli(tmp_path, "artifact", "list")
+    show_result = run_cli(tmp_path, "artifact", "show", artifact_id)
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert artifact_id in list_result.stdout
+    assert "knowledge_import" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert f"Artifact: {artifact_id}" in show_result.stdout
+    assert "Type: knowledge_import" in show_result.stdout
+    assert "Source path:" in show_result.stdout
+    assert "SHA256:" in show_result.stdout
+
+
 def test_contribution_list_inspect_and_reject(tmp_path):
     run_cli(tmp_path, "init")
     note = tmp_path / "notes.md"
@@ -341,6 +361,31 @@ def test_contribution_list_inspect_and_reject(tmp_path):
     assert reject_result.returncode == 0, reject_result.stderr
     assert "rejected" in reject_result.stdout
     assert contribution_id not in review_after_reject.stdout
+
+
+def test_contribution_accept_writes_reviewed_knowledge_record(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nUseful source note.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    accept_result = run_cli(tmp_path, "contribution", "accept", contribution_id)
+    inspect_result = run_cli(tmp_path, "contribution", "inspect", contribution_id)
+    review_result = run_cli(tmp_path, "review")
+
+    accepted_path = tmp_path / ".novi" / "knowledge" / "accepted" / f"{contribution_id}.md"
+    raw_path = tmp_path / ".novi" / "knowledge" / "raw" / f"{contribution_id}-notes.md"
+    index_path = tmp_path / ".novi" / "knowledge" / "index.jsonl"
+
+    assert accept_result.returncode == 0, accept_result.stderr
+    assert "accepted" in accept_result.stdout
+    assert accepted_path.exists()
+    assert raw_path.exists()
+    assert "Useful source note." in accepted_path.read_text(encoding="utf-8")
+    assert contribution_id in index_path.read_text(encoding="utf-8")
+    assert "Status: accepted" in inspect_result.stdout
+    assert contribution_id not in review_result.stdout
 
 
 def test_run_start_creates_auditable_deterministic_records(tmp_path):
@@ -395,6 +440,73 @@ def test_run_writes_prompt_pack_and_human_readable_timeline(tmp_path):
     assert "ToolExecuted" in timeline_text
     assert prompt_result.returncode == 0, prompt_result.stderr
     assert "Novi Lab System Prompt" in prompt_result.stdout
+
+
+def test_run_context_includes_accepted_knowledge(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nAccepted project fact.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+    run_cli(tmp_path, "contribution", "accept", contribution_id)
+    run_cli(tmp_path, "session", "create", "knowledge context run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "use accepted knowledge")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    context_text = (run_dir / "context_pack.yaml").read_text()
+    accepted_prompt = run_dir / "prompt_parts" / "60-accepted-knowledge.md"
+    prompt_text = (run_dir / "prompt.md").read_text()
+    system_prompt_text = (run_dir / "system_prompt.md").read_text()
+
+    assert "accepted knowledge" in context_text
+    assert contribution_id in context_text
+    assert accepted_prompt.exists()
+    assert "Accepted project fact." in accepted_prompt.read_text(encoding="utf-8")
+    assert "Accepted project fact." in prompt_text
+    assert "Accepted project fact." in system_prompt_text
+
+
+def test_run_trace_explains_accepted_knowledge_lineage(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nTraceable project fact.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+    artifact_id = parse_id(import_result.stdout, "art_")
+    run_cli(tmp_path, "contribution", "accept", contribution_id)
+    run_cli(tmp_path, "session", "create", "knowledge lineage run")
+    run_result = run_cli(tmp_path, "run", "start", "research", "trace accepted knowledge")
+    run_id = parse_id(run_result.stdout, "run_")
+
+    trace_result = run_cli(tmp_path, "run", "trace", run_id)
+
+    assert trace_result.returncode == 0, trace_result.stderr
+    assert "Accepted knowledge:" in trace_result.stdout
+    assert contribution_id in trace_result.stdout
+    assert artifact_id in trace_result.stdout
+    assert "notes.md" in trace_result.stdout
+
+
+def test_knowledge_list_and_show_accepted_record(tmp_path):
+    run_cli(tmp_path, "init")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes\n\nVisible accepted fact.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    contribution_id = parse_id(import_result.stdout, "contrib_")
+    run_cli(tmp_path, "contribution", "accept", contribution_id)
+
+    list_result = run_cli(tmp_path, "knowledge", "list")
+    show_result = run_cli(tmp_path, "knowledge", "show", contribution_id)
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert contribution_id in list_result.stdout
+    assert "notes.md" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert f"Knowledge: {contribution_id}" in show_result.stdout
+    assert "Visible accepted fact." in show_result.stdout
 
 
 def test_run_start_records_selected_simple_kernel(tmp_path):
@@ -944,3 +1056,23 @@ def test_memory_accept_and_reject_record_review_decisions(tmp_path):
     assert reject_result.returncode == 0, reject_result.stderr
     assert "rejected" in reject_result.stdout
     assert second_candidate_id not in run_cli(tmp_path, "memory", "review").stdout
+
+
+def test_memory_list_and_show_include_review_decisions_and_evidence(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "memory inspect run")
+    run_cli(tmp_path, "run", "start", "research", "record memory evidence")
+    candidate_id = parse_id(run_cli(tmp_path, "memory", "review").stdout, "memcand_")
+
+    run_cli(tmp_path, "memory", "accept", candidate_id)
+    list_result = run_cli(tmp_path, "memory", "list")
+    show_result = run_cli(tmp_path, "memory", "show", candidate_id)
+
+    assert list_result.returncode == 0, list_result.stderr
+    assert candidate_id in list_result.stdout
+    assert "accepted" in list_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert f"Memory candidate: {candidate_id}" in show_result.stdout
+    assert "Status: accepted" in show_result.stdout
+    assert "Evidence:" in show_result.stdout
+    assert "Run:" in show_result.stdout

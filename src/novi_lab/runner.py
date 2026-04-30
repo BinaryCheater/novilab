@@ -6,6 +6,7 @@ from .kernels import compile_kernel_binding, run_deepagents_kernel, validate_ker
 from .prompts import write_prompt_pack
 from .store import (
     append_jsonl,
+    accepted_knowledge,
     content_hash,
     create_run_dir,
     load_session,
@@ -115,6 +116,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
 
     context_id = new_id("ctx")
     context_path = run_dir / "context_pack.yaml"
+    knowledge_records = accepted_knowledge(root)
     context = {
         "id": context_id,
         "session_id": session["id"],
@@ -127,7 +129,18 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "excludes": ["raw old messages", "unreviewed memory", "network content"],
         "skill_refs": run_record["skill_refs"],
         "tool_refs": ["search_stub.query"],
+        "accepted_knowledge_refs": [
+            {
+                "id": record["id"],
+                "title": record.get("title"),
+                "accepted_path": record.get("accepted_path"),
+                "source_artifact_id": record.get("source_artifact_id"),
+            }
+            for record in knowledge_records
+        ],
     }
+    if knowledge_records:
+        context["includes"].append("accepted knowledge")
     write_yaml(context_path, context)
     run_record["context_pack_ids"].append(context_id)
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "ContextPackBuilt", session["id"], orchestrator, "Context pack built.", {"context_pack_id": context_id}))

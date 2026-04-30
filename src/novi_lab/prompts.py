@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .skills import discover_skills
 from .model_providers import configured_model_record
-from .store import append_jsonl, session_messages
+from .store import accepted_knowledge, append_jsonl, session_messages
 from .tools import list_tools
 
 
@@ -115,6 +115,24 @@ def build_prompt_parts(root, run_record, context_pack):
             ]
         )
 
+    knowledge_lines = ["# Accepted Knowledge", ""]
+    knowledge_records = accepted_knowledge(root)
+    if knowledge_records:
+        for record in knowledge_records:
+            knowledge_lines.extend(
+                [
+                    f"## {record.get('title') or record['id']}",
+                    "",
+                    f"- Contribution: {record['id']}",
+                    f"- Source artifact: {record.get('source_artifact_id', '-')}",
+                    "",
+                    record.get("content", "").strip(),
+                    "",
+                ]
+            )
+    else:
+        knowledge_lines.append("No accepted knowledge records.")
+
     recent_messages = "\n".join(
         json.dumps(
             {
@@ -132,6 +150,7 @@ def build_prompt_parts(root, run_record, context_pack):
         ("20-agent.md", run_context.strip() + "\n"),
         ("30-skills.md", "\n".join(skill_lines).strip() + "\n"),
         ("40-tools.md", "\n".join(tool_lines).strip() + "\n"),
+        ("60-accepted-knowledge.md", "\n".join(knowledge_lines).strip() + "\n"),
         ("70-recent-messages.jsonl", recent_messages + ("\n" if recent_messages else "")),
         ("80-current-task.md", current_task),
     ]
@@ -142,7 +161,7 @@ def build_prompt_markdown(root, run_record, context_pack):
 
 
 def build_system_prompt_markdown(root, run_record, context_pack):
-    stable_part_names = {"00-system.md", "30-skills.md", "40-tools.md"}
+    stable_part_names = {"00-system.md", "30-skills.md", "40-tools.md", "60-accepted-knowledge.md"}
     return "\n\n".join(
         content.strip()
         for filename, content in build_prompt_parts(root, run_record, context_pack)
