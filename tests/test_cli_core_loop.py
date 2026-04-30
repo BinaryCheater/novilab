@@ -438,6 +438,78 @@ def test_contribution_accept_writes_reviewed_knowledge_record(tmp_path):
     assert contribution_id not in review_result.stdout
 
 
+def test_accept_latest_and_all_reduce_review_friction(tmp_path):
+    run_cli(tmp_path, "init")
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("# First\n\nFirst accepted fact.\n", encoding="utf-8")
+    second.write_text("# Second\n\nSecond accepted fact.\n", encoding="utf-8")
+    first_id = parse_id(run_cli(tmp_path, "import", str(first)).stdout, "contrib_")
+    second_id = parse_id(run_cli(tmp_path, "import", str(second)).stdout, "contrib_")
+
+    latest_result = run_cli(tmp_path, "accept", "latest")
+    review_after_latest = run_cli(tmp_path, "review")
+    all_result = run_cli(tmp_path, "accept", "all")
+    review_after_all = run_cli(tmp_path, "review")
+
+    assert latest_result.returncode == 0, latest_result.stderr
+    assert f"Contribution {second_id} accepted" in latest_result.stdout
+    assert second_id not in review_after_latest.stdout
+    assert first_id in review_after_latest.stdout
+    assert all_result.returncode == 0, all_result.stderr
+    assert f"Contribution {first_id} accepted" in all_result.stdout
+    assert first_id not in review_after_all.stdout
+    assert second_id not in review_after_all.stdout
+
+
+def test_review_check_reports_patch_apply_state(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "review check")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "target.md"
+    target.write_text("# Target\n\nExisting.\n", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.write_text("# Note\n\nPatch me.\n", encoding="utf-8")
+    import_id = parse_id(run_cli(tmp_path, "import", str(note)).stdout, "contrib_")
+    process_result = run_cli(tmp_path, "process", import_id, "--target", str(target), "--kernel", "simple")
+    patch_id = parse_labeled_id(process_result.stdout, "Patch contribution:", "contrib_")
+
+    result = run_cli(tmp_path, "review", "--check")
+
+    assert result.returncode == 0, result.stderr
+    assert patch_id in result.stdout
+    assert "would_apply" in result.stdout
+
+
+def test_task_creates_session_when_needed_and_runs_research(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "task", "Summarize current research direction", "--kernel", "simple")
+    sessions = run_cli(tmp_path, "session", "list")
+    runs = run_cli(tmp_path, "run", "list")
+
+    assert result.returncode == 0, result.stderr
+    assert "Created session:" in result.stdout
+    assert "Task: Summarize current research direction" in result.stdout
+    assert "Task run:" in result.stdout
+    assert "research direction" in runs.stdout
+
+
+def test_top_level_trace_and_output_alias_latest_run(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "alias session")
+    run_result = run_cli(tmp_path, "run", "start", "research", "alias objective", "--kernel", "simple")
+    run_id = parse_id(run_result.stdout, "run_")
+
+    trace_result = run_cli(tmp_path, "trace", "latest")
+    output_result = run_cli(tmp_path, "output", "latest")
+
+    assert trace_result.returncode == 0, trace_result.stderr
+    assert output_result.returncode == 0, output_result.stderr
+    assert f"Run: {run_id}" in trace_result.stdout
+    assert "Model calls:" in trace_result.stdout
+    assert "No model executor connected" in output_result.stdout
+
+
 def test_process_import_with_target_creates_analysis_note_and_patch_contribution(tmp_path):
     run_cli(tmp_path, "init")
     run_cli(tmp_path, "session", "create", "document processing")

@@ -315,6 +315,39 @@ def cmd_ask(args):
     return 0
 
 
+def cmd_task(args):
+    root = Path.cwd()
+    print(f"Task: {args.objective}")
+    try:
+        session = active_session(root)
+        print(f"Using active session: {session['id']}")
+    except RuntimeError:
+        session = create_session(root, args.objective)
+        print(f"Created session: {session['id']}")
+    append_session_message(root, session["id"], "user", args.objective)
+    agents = [load_agent(root, agent_id) for agent_id in args.agent]
+    run = start_deterministic_run(root, session, args.type, args.objective, agents, kernel=args.kernel, preflight_tools=False)
+    body = _response_body(require_workspace(root) / "runs" / run["id"])
+    append_session_message(root, session["id"], "assistant", body, run_id=run["id"])
+    print(f"Task run: {run['id']}")
+    if body:
+        print("")
+        print("Response:")
+        print(body)
+    print("Next:")
+    print("- novi run trace latest")
+    print("- novi review --check")
+    return 0
+
+
+def cmd_trace(args):
+    return cmd_run_trace(args)
+
+
+def cmd_output(args):
+    return cmd_run_output(args)
+
+
 def cmd_run_list(args):
     session = active_session(Path.cwd())
     table = Table(title=f"Runs for {session['id']}")
@@ -500,6 +533,26 @@ def _pending_contributions(root):
     return [contribution for contribution in list_contributions(root) if contribution.get("status") == "pending"]
 
 
+def _resolve_pending_contributions(root, selector):
+    pending = _pending_contributions(root)
+    if selector == "all":
+        return pending
+    if selector == "latest":
+        if not pending:
+            raise RuntimeError("No pending contributions.")
+        pending.sort(key=lambda item: item.get("created_at", ""))
+        return [pending[-1]]
+    contribution, _ = load_contribution(root, selector)
+    return [contribution]
+
+
+def _accept_contribution(root, contribution_id):
+    contribution, _ = load_contribution(root, contribution_id)
+    if contribution.get("type") == "document_patch":
+        return apply_patch_contribution(root, contribution_id), "accepted and merged"
+    return decide_contribution(root, contribution_id, "accepted"), "accepted"
+
+
 def cmd_review(args):
     root = Path.cwd()
     pending_memory = _pending_memory(root)
@@ -528,15 +581,39 @@ def cmd_review(args):
         contribution_table.add_column("ID", no_wrap=True)
         contribution_table.add_column("Status")
         contribution_table.add_column("Type")
+        if args.check:
+            contribution_table.add_column("Check")
         contribution_table.add_column("Title")
         for contribution in pending_contributions:
+            check_status = "-"
+            if args.check and contribution.get("type") == "document_patch":
+                check_status = check_patch_contribution(root, contribution["id"]).get("status", "-")
             contribution_table.add_row(
                 contribution["id"],
                 contribution.get("status", "-"),
                 contribution.get("type", "-"),
+                *([check_status] if args.check else []),
                 contribution.get("title", ""),
             )
         console.print(contribution_table)
+        if args.check:
+            for contribution in pending_contributions:
+                if contribution.get("type") == "document_patch":
+                    result = contribution.get("check_result") or check_patch_contribution(root, contribution["id"])
+                    print(f"Check {contribution['id']}: {result.get('status', '-')}")
+    return 0
+
+
+def cmd_accept(args):
+    accepted = []
+    for contribution in _resolve_pending_contributions(Path.cwd(), args.selector):
+        record, message = _accept_contribution(Path.cwd(), contribution["id"])
+        accepted.append(record["id"])
+        print(f"Contribution {record['id']} {message}")
+        if record.get("accepted_knowledge_path"):
+            print(f"Accepted knowledge: {record['accepted_knowledge_path']}")
+    if not accepted:
+        print("No pending contributions to accept.")
     return 0
 
 
@@ -760,13 +837,8 @@ def cmd_contribution_reject(args):
 
 
 def cmd_contribution_accept(args):
-    contribution, _ = load_contribution(Path.cwd(), args.contribution_id)
-    if contribution.get("type") == "document_patch":
-        contribution = apply_patch_contribution(Path.cwd(), args.contribution_id)
-        print(f"Contribution {contribution['id']} accepted and merged")
-        return 0
-    contribution = decide_contribution(Path.cwd(), args.contribution_id, "accepted")
-    print(f"Contribution {contribution['id']} accepted")
+    contribution, message = _accept_contribution(Path.cwd(), args.contribution_id)
+    print(f"Contribution {contribution['id']} {message}")
     if contribution.get("accepted_knowledge_path"):
         print(f"Accepted knowledge: {contribution['accepted_knowledge_path']}")
     return 0
@@ -946,7 +1018,12 @@ def build_parser():
     process_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     process_parser.set_defaults(func=cmd_process)
 
+    accept_parser = subparsers.add_parser("accept")
+    accept_parser.add_argument("selector", nargs="?", default="latest")
+    accept_parser.set_defaults(func=cmd_accept)
+
     review_parser = subparsers.add_parser("review")
+    review_parser.add_argument("--check", action="store_true")
     review_parser.set_defaults(func=cmd_review)
 
     artifact_parser = subparsers.add_parser("artifact")
@@ -980,6 +1057,21 @@ def build_parser():
     ask_parser.add_argument("--agent", action="append", default=[])
     ask_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     ask_parser.set_defaults(func=cmd_ask)
+
+    task_parser = subparsers.add_parser("task")
+    task_parser.add_argument("objective")
+    task_parser.add_argument("--type", choices=["research", "analysis", "audit"], default="research")
+    task_parser.add_argument("--agent", action="append", default=[])
+    task_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
+    task_parser.set_defaults(func=cmd_task)
+
+    trace_parser = subparsers.add_parser("trace")
+    trace_parser.add_argument("run_id", nargs="?", default="latest")
+    trace_parser.set_defaults(func=cmd_trace)
+
+    output_parser = subparsers.add_parser("output")
+    output_parser.add_argument("run_id", nargs="?", default="latest")
+    output_parser.set_defaults(func=cmd_output)
 
     skill_parser = subparsers.add_parser("skill")
     skill_sub = skill_parser.add_subparsers(dest="skill_command", required=True)

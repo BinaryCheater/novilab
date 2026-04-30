@@ -10,22 +10,22 @@ Novi Lab 当前适合在一个本地项目目录中使用，用来创建 `.novi/
 
 ## 2. 安装与运行方式
 
-开发期推荐使用 `uv run` 从仓库源码运行：
+安装后推荐直接使用 `novi`：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli --help
+novi --help
+```
+
+开发期如果要从仓库源码运行，用 `uv run` 调脚本入口：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents novi --help
 ```
 
 如果本机 `uv` cache 权限受限，可以把 cache 放到项目内：
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli --help
-```
-
-如果已经通过包安装并暴露了脚本入口，也可以使用：
-
-```bash
-novi --help
+UV_CACHE_DIR=.uv-cache uv run --python 3.12 --extra dev --extra deepagents novi --help
 ```
 
 ## 3. 初始化工作区
@@ -33,7 +33,7 @@ novi --help
 在要使用 Novi 的项目目录中执行：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli init
+novi init
 ```
 
 成功后会创建 `.novi/`。这个目录是 Novi 的本地 source of truth，包含项目配置、sessions、runs、memory candidates、工具调用日志和模型调用日志。
@@ -41,7 +41,7 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli init
 查看状态：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli status
+novi status
 ```
 
 ## 4. 配置模型
@@ -51,7 +51,7 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli statu
 SiliconFlow 使用 OpenAI-compatible chat-completions API，可以这样配置：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli configure model siliconflow \
+novi configure model siliconflow \
   --model "deepseek-ai/DeepSeek-V4-Flash" \
   --api-key "YOUR_API_KEY"
 ```
@@ -67,7 +67,7 @@ https://api.siliconflow.cn/v1
 如果第三方供应商支持 `/v1/chat/completions`：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli configure model openai-chat \
+novi configure model openai-chat \
   --model "MODEL_NAME" \
   --base-url "https://provider.example.com/v1" \
   --api-key "YOUR_API_KEY"
@@ -76,7 +76,7 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli confi
 检查当前模型配置：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli doctor model
+novi doctor model
 ```
 
 注意：Phase 1 原型会把 model config 写入 `.novi/novi.yaml`。CLI 不会回显 API key 的内容，只显示是否已设置。后续仍需要决定是否迁移到 `.novi/secrets.yaml`、环境变量或系统 keychain。
@@ -110,6 +110,14 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli sessi
 Session 是长期工作上下文，不只是 chat history。当前实现会在 session 中记录 user/assistant messages，并把 run ids 关联回 session。
 
 ## 6. 运行任务
+
+推荐把研究目标交给 `novi task`：
+
+```bash
+novi task "整理 contact persistence 相关知识，并提出下一步实验"
+```
+
+`task` 会在没有 active session 时自动创建 session，启动一个 research run，记录 session messages，并提示下一步 trace/review 命令。当前它是单次 run 入口，后续会扩展为可 resume 的长期 task loop。
 
 ### 6.1 单次 run
 
@@ -150,13 +158,20 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli ask "
 查看最新 run 的模型输出：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli run output latest
+novi output latest
 ```
 
 查看最新 run 的 trace：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli run trace latest
+novi trace latest
+```
+
+底层命令仍可用：
+
+```bash
+novi run output latest
+novi run trace latest
 ```
 
 查看 run 结构化摘要：
@@ -311,19 +326,20 @@ Novi 会把 analysis 写成 artifact，把 proposed target document 转成 `docu
 检查 patch：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli contribution check contrib_...
+novi review --check
 ```
 
 接受并应用 patch：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli contribution accept contrib_...
+novi accept latest
+novi accept all
 ```
 
 要求修改：
 
 ```bash
-uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli contribution request-changes contrib_... \
+novi contribution request-changes contrib_... \
   --reason "Need clearer source links."
 ```
 
