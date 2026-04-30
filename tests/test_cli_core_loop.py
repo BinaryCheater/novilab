@@ -1512,6 +1512,58 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
     assert "deepagents_model" in trace_result.stdout
 
 
+def test_task_deepagents_research_loop_archives_model_artifacts(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    calls = 0",
+                "",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        self.system_prompt = system_prompt or ''",
+                "",
+                "    def invoke(self, payload):",
+                "        FakeAgent.calls += 1",
+                "        assert 'research-note.md' in self.system_prompt",
+                "        assert 'next-actions.md' in self.system_prompt",
+                "        step = 'plan' if FakeAgent.calls == 1 else 'work'",
+                "        return {",
+                "            'messages': [FakeMessage(f'# {step}\\n\\nConcrete research output.')],",
+                "            'files': {f'/{step}-research-note.md': {'content': f'# {step}\\n\\nFinding from {step}.'}}",
+                "        }",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "task", "Produce research artifacts", "--kernel", "deepagents", "--steps", "2")
+
+    assert result.returncode == 0, result.stderr
+    assert "Task runs: 2" in result.stdout
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    run_ids = re.findall(r"\b(run_[0-9TZA-Z_a-z]+)\b", inspect.stdout)
+    assert len(run_ids) >= 2
+    for run_id in run_ids[-2:]:
+        run_dir = tmp_path / ".novi" / "runs" / run_id
+        artifacts_text = "\n".join(path.read_text(encoding="utf-8") for path in (run_dir / "artifacts").glob("*.yaml"))
+        assert "type: model_response" in artifacts_text
+        assert "type: deepagents_file" in artifacts_text
+        assert "research-note.md" in artifacts_text
+        assert "Concrete research output." in (run_dir / "response.md").read_text(encoding="utf-8")
+        assert "model response artifact" in (run_dir / "summary.md").read_text(encoding="utf-8")
+        assert "DeepAgents files" in run_cli(tmp_path, "trace", run_id).stdout
+
+
 def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("NOVI_MODEL_PROVIDER", "openai_chat")
     monkeypatch.setenv("NOVI_MODEL", "Pro/zai-org/GLM-4.7")

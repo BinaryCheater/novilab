@@ -294,17 +294,31 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "MemoryCandidateProposed", session["id"], auditor, "Memory candidate proposed.", {"memory_candidate_id": memory_id}))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "AuditorReviewed", session["id"], auditor, "Auditor checked deterministic records."))
 
-    summary = "\n".join(
-        [
-            f"# Run {run_id}",
-            "",
-            f"Status: completed",
-            f"Objective: {objective}",
-            "",
-            f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one tool runtime call attempt, one research note artifact, and one memory candidate.",
-            "",
-        ]
-    )
+    if kernel == "deepagents":
+        deepagents_files = run_record.get("deepagents_files", [])
+        summary = "\n".join(
+            [
+                f"# Run {run_id}",
+                "",
+                "Status: completed",
+                f"Objective: {objective}",
+                "",
+                f"The DeepAgents runner wrote a context pack, {len(participants)} agent boundary artifact(s), a model response artifact, {len(deepagents_files)} exported working file artifact(s), one deterministic audit note, and one memory candidate.",
+                "",
+            ]
+        )
+    else:
+        summary = "\n".join(
+            [
+                f"# Run {run_id}",
+                "",
+                "Status: completed",
+                f"Objective: {objective}",
+                "",
+                f"The deterministic local runner wrote a context pack, {len(participants)} agent step artifacts, one tool runtime call attempt, one research note artifact, and one memory candidate.",
+                "",
+            ]
+        )
     (run_dir / "summary.md").write_text(summary, encoding="utf-8")
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunSummarized", session["id"], orchestrator, "Run summary written."))
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCompleted", session["id"], orchestrator, "Run completed."))

@@ -265,6 +265,11 @@ def workflow_step_instruction(workflow, task, step):
         f"Actor: {actor}",
         "",
         "Execute only this workflow step. Use accepted knowledge, active skills, prior task runs, and available tools.",
+        "",
+        "For research or reflection steps, produce durable Markdown working files when possible. Prefer these filenames when they fit the step:",
+        "- research-note.md for findings, synthesis, assumptions, and uncertainty",
+        "- next-actions.md for concrete follow-up steps and open questions",
+        "- proposals.md for proposed knowledge, skill, or workflow changes that need review",
     ]
     if step.get("instructions"):
         lines.extend(["", "Step instructions:", step["instructions"]])

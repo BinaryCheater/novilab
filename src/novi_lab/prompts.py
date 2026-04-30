@@ -26,6 +26,13 @@ You are executing inside Novi Lab, a local-first, skill-first control plane.
 - Use the provided context pack instead of assuming full chat history is available.
 - Prefer session summaries, run state, active skills, accepted memory, and selected artifacts.
 - Exclude raw old messages, unreviewed memory, and unavailable tools unless explicitly supplied.
+
+## Durable Outputs
+
+- For research or reflection work, produce concrete Markdown working files when possible.
+- Prefer `research-note.md` for findings, synthesis, assumptions, and uncertainty.
+- Prefer `next-actions.md` for concrete follow-up steps and open questions.
+- Prefer `proposals.md` for proposed knowledge, skill, or workflow changes that need review.
 """
 
 

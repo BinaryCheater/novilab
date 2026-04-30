@@ -206,6 +206,25 @@ def _export_deepagents_files(run_dir, run_record, result):
     return exported
 
 
+def _archive_response_artifact(run_dir, run_record, response_path):
+    artifact_id = new_id("art")
+    artifact = {
+        "id": artifact_id,
+        "type": "model_response",
+        "path": str(response_path),
+        "run_id": run_record["id"],
+        "created_at": utc_now(),
+        "produced_by": run_record.get("participants", [{}])[0].get("agent_id"),
+        "hash": content_hash(response_path),
+        "hash_algorithm": "sha256",
+        "mime_type": "text/markdown",
+        "size_bytes": response_path.stat().st_size,
+    }
+    write_yaml(Path(run_dir) / "artifacts" / f"{artifact_id}.yaml", artifact)
+    run_record.setdefault("artifact_ids", []).append(artifact_id)
+    return artifact_id
+
+
 def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
@@ -232,6 +251,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
         messages_path = _archive_deepagents_messages(run_dir, result)
         exported_files = _export_deepagents_files(run_dir, run_record, result)
         response_path.write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
+        response_artifact_id = _archive_response_artifact(run_dir, run_record, response_path)
         append_jsonl(
             Path(run_dir) / "model_calls.jsonl",
             {
@@ -245,6 +265,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
                 "prompt_path": str(prompt_path),
                 "model_messages_path": str(messages_path),
                 "response_path": str(response_path),
+                "response_artifact_id": response_artifact_id,
                 "messages_path": str(messages_path) if messages_path else None,
                 "exported_files": exported_files,
             },

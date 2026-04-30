@@ -143,6 +143,23 @@ novi task "整理接触先验相关文档并给出下一步研究计划" --steps
 
 `task` 会在 `task.yaml` 中保存 `workflow_state`。每次 run 都会记录 `workflow_id`、`workflow_step_id` 和 `workflow_step_kind`，prompt archive 里会包含当前 workflow step 与同一 task 的历史 run 引用。这样外部 API、TUI 或更高层 agent 可以把 `task continue --steps N` 当成可恢复的 workflow 推进接口。
 
+使用真实 LLM 跑有产物的 research loop：
+
+```bash
+novi doctor model
+novi task "围绕接触先验整理已有知识，形成一版研究假设和下一步行动" --steps 2
+novi trace latest
+novi output latest
+novi artifact list
+```
+
+DeepAgents run 会归档：
+
+- `response.md`：模型主回复，也登记为 `model_response` artifact；
+- `deepagents_files/`：模型写出的工作文件，例如 `research-note.md`、`next-actions.md`，登记为 `deepagents_file` artifact；
+- `prompt_parts/75-task-history.md`：同一 task 的历史 run 引用；
+- `model_calls.jsonl` 和 `deepagents_messages.jsonl`：模型调用和对话过程。
+
 如果任务下存在 pending proposal，`task continue` 会停在 review gate，不会继续推进。按任务过滤 review/accept：
 
 ```bash

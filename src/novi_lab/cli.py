@@ -591,6 +591,20 @@ def cmd_run_trace(args):
         print("- none")
     for call in tool_calls:
         print(f"- {call.get('tool_id')} {call.get('status')} {call.get('source', '-')}")
+    print("Artifacts:")
+    artifact_paths = sorted((run_dir / "artifacts").glob("*.yaml"))
+    if not artifact_paths:
+        print("- none")
+    for artifact_path in artifact_paths:
+        artifact = read_yaml(artifact_path, {})
+        print(f"- {artifact.get('id')} {artifact.get('type', '-')} {artifact.get('path', '-')}")
+    run = load_run(Path.cwd(), run_id)
+    files = run.get("deepagents_files", [])
+    print("DeepAgents files:")
+    if not files:
+        print("- none")
+    for item in files:
+        print(f"- {item.get('artifact_id')} {item.get('path')}")
     print("Kernel bindings:")
     bindings = read_jsonl(run_dir / "kernel_bindings.jsonl")
     if not bindings:
