@@ -600,8 +600,9 @@ def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_pat
         "\n".join(
             [
                 "class FakeMessage:",
-                "    def __init__(self, content):",
+                "    def __init__(self, content, tool_calls=None):",
                 "        self.content = content",
+                "        self.tool_calls = tool_calls or []",
                 "",
                 "class FakeAgent:",
                 "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
@@ -611,8 +612,10 @@ def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_pat
                 "        assert 'Document Merge Workflow' in self.system_prompt",
                 "        assert 'document.curate' in self.system_prompt",
                 "        assert 'document.merge' in self.system_prompt",
+                "        assert 'Do not try to read Novi workspace paths' in self.system_prompt",
+                "        assert 'The Target Document section below is authoritative' in self.system_prompt",
                 "        return {",
-                "            'messages': [FakeMessage('processed import')],",
+                "            'messages': [FakeMessage('', tool_calls=[{'name': 'read_file', 'args': {'path': '/.novi/knowledge/topics/physical-priors.md'}}]), FakeMessage('processed import')],",
                 "            'files': {",
                 "                '/analysis_note.md': {'content': '# LLM Analysis\\n\\nImportant imported idea.'},",
                 "                '/proposed.md': {'content': '# Physical Priors\\n\\nExisting notes.\\n\\n## LLM Merge\\n\\nMerged by DeepAgents.'},",
@@ -654,7 +657,10 @@ def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_pat
 
     assert "Important imported idea." in (run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").read_text(encoding="utf-8")
     assert '"kernel": "deepagents"' in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8")
-    assert "processed import" in (run_dir / "deepagents_messages.jsonl").read_text(encoding="utf-8")
+    messages_text = (run_dir / "deepagents_messages.jsonl").read_text(encoding="utf-8")
+    assert "processed import" in messages_text
+    assert "read_file" in messages_text
+    assert "/.novi/knowledge/topics/physical-priors.md" in messages_text
     assert "Merged by DeepAgents." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
 
     accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)

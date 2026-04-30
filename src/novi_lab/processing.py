@@ -66,18 +66,37 @@ def _message_content(message):
     return str(getattr(message, "content", ""))
 
 
+def _message_field(message, field):
+    if isinstance(message, dict):
+        return message.get(field)
+    return getattr(message, field, None)
+
+
+def _jsonable(value):
+    try:
+        json.dumps(value)
+        return value
+    except TypeError:
+        return json.loads(json.dumps(value, default=str))
+
+
 def _archive_deepagents_messages(run_dir, result):
     if not isinstance(result, dict) or not result.get("messages"):
         return
     for index, message in enumerate(result["messages"]):
+        record = {
+            "index": index,
+            "role": getattr(message, "role", None) or (message.get("role") if isinstance(message, dict) else type(message).__name__),
+            "content": _message_content(message),
+            "message_type": type(message).__name__,
+        }
+        for field in ("tool_calls", "invalid_tool_calls", "additional_kwargs", "response_metadata", "name", "tool_call_id"):
+            value = _message_field(message, field)
+            if value:
+                record[field] = _jsonable(value)
         append_jsonl(
             Path(run_dir) / "deepagents_messages.jsonl",
-            {
-                "index": index,
-                "role": getattr(message, "role", None) or (message.get("role") if isinstance(message, dict) else type(message).__name__),
-                "content": _message_content(message),
-                "message_type": type(message).__name__,
-            },
+            record,
         )
 
 
@@ -133,6 +152,12 @@ def _processing_prompt(root, workflow_record, source_text, source_artifact, impo
             workflow_prompt(workflow_record).strip(),
             "",
             "# Novi Document Processing Output Protocol",
+            "",
+            "Do not try to read Novi workspace paths such as `.novi/...` or `/.novi/...` through DeepAgents working-file tools.",
+            "Those tools only see the DeepAgents virtual workspace, not the Novi project workspace.",
+            "The Imported Document and Target Document sections below are authoritative snapshots supplied by Novi.",
+            "The Target Document section below is authoritative even when the named target path is not visible to your tools.",
+            "Write only the requested virtual output files; Novi will turn `/proposed.md` into a reviewable patch.",
             "",
             "Return virtual files when possible:",
             "- /analysis_note.md: Markdown analysis note.",
