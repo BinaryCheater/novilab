@@ -108,7 +108,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
     append_jsonl(run_dir / "events.jsonl", _event(run_id, "RunCreated", session["id"], orchestrator, "Run created."))
 
     for participant in participants:
-        binding = compile_kernel_binding(participant, kernel)
+        binding = compile_kernel_binding(root, participant, kernel)
         binding["run_id"] = run_id
         append_jsonl(run_dir / "kernel_bindings.jsonl", binding)
         run_record["kernel_binding_ids"].append(f"{participant['agent_id']}:{kernel}")

@@ -141,6 +141,19 @@ def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
     assert "agent_orchestrator" in result.stdout
 
 
+def test_tool_expose_updates_routing_metadata(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
+
+    expose_result = run_cli(tmp_path, "tool", "expose", "filesystem.read", "agent_reader")
+    show_result = run_cli(tmp_path, "tool", "show", "filesystem.read")
+
+    assert expose_result.returncode == 0, expose_result.stderr
+    assert "Exposed filesystem.read to agent_reader" in expose_result.stdout
+    assert show_result.returncode == 0, show_result.stderr
+    assert "agent_reader" in show_result.stdout
+
+
 def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
     run_cli(tmp_path, "init")
     (tmp_path / "note.md").write_text("local evidence", encoding="utf-8")
@@ -157,6 +170,7 @@ def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
         "path=note.md",
     )
     run_cli(tmp_path, "agent", "grant-tool", "agent_reader", "filesystem.read")
+    run_cli(tmp_path, "tool", "expose", "filesystem.read", "agent_reader")
     allowed = run_cli(
         tmp_path,
         "tool",
@@ -187,6 +201,28 @@ def test_manual_tool_call_uses_agent_scope_and_reads_workspace_file(tmp_path):
     assert root_relative.returncode == 0, root_relative.stderr
     assert "success" in root_relative.stdout
     assert "local evidence" in root_relative.stdout
+
+
+def test_tool_call_requires_agent_scope_and_exposure(tmp_path):
+    run_cli(tmp_path, "init")
+    (tmp_path / "note.md").write_text("local evidence", encoding="utf-8")
+    run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
+    run_cli(tmp_path, "agent", "grant-tool", "agent_reader", "filesystem.read")
+
+    blocked = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.read",
+        "--agent",
+        "agent_reader",
+        "--arg",
+        "path=note.md",
+    )
+
+    assert blocked.returncode == 0, blocked.stderr
+    assert "blocked" in blocked.stdout
+    assert "tool_not_exposed_to_agent" in blocked.stdout
 
 
 def test_session_create_writes_session_records(tmp_path):
@@ -701,6 +737,24 @@ def test_run_archives_compiled_kernel_bindings(tmp_path):
     assert "Kernel bindings:" in inspect_result.stdout
     assert "agent_orchestrator simple" in inspect_result.stdout
     assert "Kernel bindings:" in trace_result.stdout
+
+
+def test_kernel_binding_filters_unexposed_tools(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "agent", "create", "agent_reader", "--role", "reader")
+    run_cli(tmp_path, "agent", "grant-tool", "agent_reader", "filesystem.read")
+    run_cli(tmp_path, "session", "create", "routing run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "inspect routing", "--agent", "agent_reader")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    binding_text = (tmp_path / ".novi" / "runs" / run_id / "kernel_bindings.jsonl").read_text()
+
+    assert '"agent_id": "agent_reader"' in binding_text
+    assert '"tool_ids": []' in binding_text
+    assert '"unavailable_tool_ids": ["filesystem.read"]' in binding_text
+    assert '"tool_not_exposed_to_agent"' in binding_text
 
 
 def test_run_records_blocked_tool_when_agent_lacks_scope(tmp_path):

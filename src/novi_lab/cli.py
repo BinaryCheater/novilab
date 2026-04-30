@@ -28,7 +28,7 @@ from .store import (
     require_workspace,
     update_project_config,
 )
-from .tools import execute_tool, list_tools, load_tool
+from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
 
 
 def _response_body(run_dir):
@@ -159,6 +159,13 @@ def cmd_tool_show(args):
     print("Expose to:")
     for agent_id in tool.get("expose_to", []):
         print(f"- {agent_id}")
+    return 0
+
+
+def cmd_tool_expose(args):
+    load_agent(Path.cwd(), args.agent_id)
+    tool = expose_tool_to_agent(Path.cwd(), args.tool_id, args.agent_id)
+    print(f"Exposed {tool['id']} to {args.agent_id}")
     return 0
 
 
@@ -499,6 +506,10 @@ def build_parser():
     tool_show = tool_sub.add_parser("show")
     tool_show.add_argument("tool_id")
     tool_show.set_defaults(func=cmd_tool_show)
+    tool_expose = tool_sub.add_parser("expose")
+    tool_expose.add_argument("tool_id")
+    tool_expose.add_argument("agent_id")
+    tool_expose.set_defaults(func=cmd_tool_expose)
     tool_call = tool_sub.add_parser("call")
     tool_call.add_argument("tool_id")
     tool_call.add_argument("--agent", dest="agent_id", required=True)

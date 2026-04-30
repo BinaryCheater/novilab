@@ -4,7 +4,7 @@ from pathlib import Path
 from .ids import new_id
 from .model_providers import resolve_deepagents_model
 from .store import append_jsonl, content_hash, read_jsonl, utc_now, write_yaml
-from .tools import execute_tool
+from .tools import available_tool_ids, execute_tool
 
 
 def require_deepagents_kernel():
@@ -31,8 +31,8 @@ def _tool_function_name(tool_id):
     return tool_id.replace(".", "_").replace("-", "_")
 
 
-def compile_kernel_binding(participant, kernel):
-    tool_scope = list(participant.get("tool_scope", []))
+def compile_kernel_binding(root, participant, kernel):
+    tool_scope, unavailable_tools = available_tool_ids(root, participant)
     hints = participant.get("kernel_binding_hints", {}).get(kernel, {})
     if not hints and kernel == "simple":
         hints = {"binding": "direct", "interrupt_on": [], "backend_routes": []}
@@ -44,6 +44,8 @@ def compile_kernel_binding(participant, kernel):
         "binding": hints.get("binding", "direct"),
         "tool_ids": tool_scope,
         "tool_names": [_tool_function_name(tool_id) for tool_id in tool_scope],
+        "unavailable_tool_ids": [tool["tool_id"] for tool in unavailable_tools],
+        "unavailable_tools": unavailable_tools,
         "prompt_refs": list(participant.get("prompt_refs", [])),
         "interrupt_on": list(hints.get("interrupt_on", [])),
         "backend_routes": list(hints.get("backend_routes", [])),
@@ -208,7 +210,7 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
     participant = run_record.get("participants", [{}])[0]
-    tool_scope = participant.get("tool_scope", [])
+    tool_scope, _ = available_tool_ids(root, participant)
     tools = [_tool_wrapper(root, run_dir, run_record["id"], participant, tool_id) for tool_id in tool_scope]
     prompt_text = Path(prompt_path).read_text(encoding="utf-8")
     messages_path = Path(run_dir) / "model_messages.jsonl"

@@ -12,6 +12,12 @@ authority, kernel binding, and tool routing inspectable.
 - Snapshotted those fields into run participants.
 - Archived compiled kernel binding records per run.
 - Added tool routing metadata to CLI-visible ToolSpecs.
+- Added `novi tool expose <tool_id> <agent_id>` to configure project-local
+  tool routing.
+- Enforced final tool availability as both agent `tool_scope` and ToolSpec
+  `expose_to` routing.
+- Filtered compiled kernel bindings so DeepAgents wrappers only receive tools
+  available to the selected agent.
 - Updated Phase 1.5 roadmap language around layered knowledge, mid-term
   session memory, and agent authority levels.
 
@@ -20,4 +26,7 @@ authority, kernel binding, and tool routing inspectable.
 - `uv run pytest tests/test_cli_core_loop.py::test_agent_profile_v2_records_authority_and_binding_hints -v`
 - `uv run pytest tests/test_cli_core_loop.py::test_run_archives_compiled_kernel_bindings -v`
 - `uv run pytest tests/test_cli_core_loop.py::test_tool_specs_show_expose_to_routing_metadata -v`
-- `uv run pytest -q` passed with 29 tests.
+- `uv run pytest tests/test_cli_core_loop.py::test_tool_expose_updates_routing_metadata -v`
+- `uv run pytest tests/test_cli_core_loop.py::test_tool_call_requires_agent_scope_and_exposure -v`
+- `uv run pytest tests/test_cli_core_loop.py::test_kernel_binding_filters_unexposed_tools -v`
+- `uv run pytest -q` passed with 32 tests.

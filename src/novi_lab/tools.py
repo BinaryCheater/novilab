@@ -2,7 +2,7 @@ import subprocess
 from pathlib import Path
 
 from .ids import new_id
-from .store import read_yaml, require_workspace, utc_now
+from .store import read_yaml, require_workspace, utc_now, write_yaml
 
 
 def builtin_tools():
@@ -54,10 +54,44 @@ def load_tool(root, tool_id):
     raise RuntimeError(f"Tool not found: {tool_id}")
 
 
+def _tool_path(base, tool_id):
+    safe_id = tool_id.replace("/", "_").replace(".", "_")
+    return Path(base) / "tools" / f"{safe_id}.yaml"
+
+
+def expose_tool_to_agent(root, tool_id, agent_id):
+    base = require_workspace(root)
+    tool = dict(load_tool(root, tool_id))
+    tool.pop("source", None)
+    exposed = list(tool.get("expose_to", []))
+    if agent_id not in exposed:
+        exposed.append(agent_id)
+    tool["expose_to"] = exposed
+    write_yaml(_tool_path(base, tool_id), tool)
+    return tool
+
+
 def evaluate_policy(tool):
     if tool.get("risk") == "read_only":
         return "allowed"
     return "blocked"
+
+
+def tool_exposed_to_agent(tool, agent_id):
+    exposed = tool.get("expose_to", [])
+    return "*" in exposed or agent_id in exposed
+
+
+def available_tool_ids(root, agent):
+    available = []
+    unavailable = []
+    for tool_id in agent.get("tool_scope", []):
+        tool = load_tool(root, tool_id)
+        if tool_exposed_to_agent(tool, agent.get("agent_id")):
+            available.append(tool_id)
+        else:
+            unavailable.append({"tool_id": tool_id, "reason": "tool_not_exposed_to_agent"})
+    return available, unavailable
 
 
 def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
@@ -84,6 +118,13 @@ def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
         call["status"] = "blocked"
         call["policy_result"] = "blocked"
         call["block_reason"] = "tool_not_in_agent_scope"
+        call["updated_at"] = utc_now()
+        return call
+
+    if not tool_exposed_to_agent(tool, agent.get("agent_id")):
+        call["status"] = "blocked"
+        call["policy_result"] = "blocked"
+        call["block_reason"] = "tool_not_exposed_to_agent"
         call["updated_at"] = utc_now()
         return call
 
