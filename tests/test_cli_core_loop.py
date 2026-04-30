@@ -100,6 +100,8 @@ def test_skill_list_shows_builtin_skills(tmp_path):
     assert "research.review" in result.stdout
     assert "run.audit" in result.stdout
     assert "memory.curate" in result.stdout
+    assert "document.curate" in result.stdout
+    assert "document.merge" in result.stdout
 
 
 def test_agent_create_list_and_show(tmp_path):
@@ -585,6 +587,130 @@ def test_process_rejects_patch_target_outside_allowed_project_state(tmp_path):
     assert result.returncode == 1
     assert "Patch target must be under .novi/knowledge" in result.stderr
     assert source_file.read_text(encoding="utf-8") == "print('do not patch')\n"
+
+
+def test_process_deepagents_generates_analysis_note_and_patch_from_files(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        self.system_prompt = system_prompt",
+                "",
+                "    def invoke(self, payload):",
+                "        assert 'Document Merge Workflow' in self.system_prompt",
+                "        assert 'document.curate' in self.system_prompt",
+                "        assert 'document.merge' in self.system_prompt",
+                "        return {",
+                "            'messages': [FakeMessage('processed import')],",
+                "            'files': {",
+                "                '/analysis_note.md': {'content': '# LLM Analysis\\n\\nImportant imported idea.'},",
+                "                '/proposed.md': {'content': '# Physical Priors\\n\\nExisting notes.\\n\\n## LLM Merge\\n\\nMerged by DeepAgents.'},",
+                "            },",
+                "        }",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "deepagents document processing")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "physical-priors.md"
+    target.write_text("# Physical Priors\n\nExisting notes.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nAgent should merge this.\n", encoding="utf-8")
+    import_result = run_cli(tmp_path, "import", str(note))
+    import_contribution_id = parse_id(import_result.stdout, "contrib_")
+
+    process_result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(target),
+        "--kernel",
+        "deepagents",
+    )
+
+    assert process_result.returncode == 0, process_result.stderr
+    run_id = parse_id(process_result.stdout, "run_")
+    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    analysis_artifact_id = parse_id(process_result.stdout, "art_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+
+    assert "Important imported idea." in (run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").read_text(encoding="utf-8")
+    assert '"kernel": "deepagents"' in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8")
+    assert "processed import" in (run_dir / "deepagents_messages.jsonl").read_text(encoding="utf-8")
+    assert "Merged by DeepAgents." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
+
+    accept_result = run_cli(tmp_path, "contribution", "accept", patch_contribution_id)
+
+    assert accept_result.returncode == 0, accept_result.stderr
+    assert "Merged by DeepAgents." in target.read_text(encoding="utf-8")
+
+
+def test_process_deepagents_accepts_json_output_protocol(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "import json",
+                "",
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        pass",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(json.dumps({",
+                "            'analysis_markdown': '# JSON Analysis\\n\\nStructured analysis from JSON.',",
+                "            'proposed_markdown': '# Target\\n\\nMerged from JSON protocol.',",
+                "        }))]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "deepagents json protocol")
+    target = tmp_path / ".novi" / "knowledge" / "topics" / "target.md"
+    target.write_text("# Target\n\nExisting.\n", encoding="utf-8")
+    note = tmp_path / "notes.md"
+    note.write_text("# Imported Note\n\nJSON protocol source.\n", encoding="utf-8")
+    import_contribution_id = parse_id(run_cli(tmp_path, "import", str(note)).stdout, "contrib_")
+
+    process_result = run_cli(
+        tmp_path,
+        "process",
+        import_contribution_id,
+        "--workflow",
+        "document-merge",
+        "--target",
+        str(target),
+        "--kernel",
+        "deepagents",
+    )
+
+    assert process_result.returncode == 0, process_result.stderr
+    run_id = parse_id(process_result.stdout, "run_")
+    patch_contribution_id = parse_id(process_result.stdout, "contrib_")
+    analysis_artifact_id = parse_id(process_result.stdout, "art_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+
+    assert "Structured analysis from JSON." in (run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md").read_text(encoding="utf-8")
+    assert "Merged from JSON protocol." in (tmp_path / ".novi" / "contributions" / patch_contribution_id / "proposed.md").read_text(encoding="utf-8")
 
 
 def test_contribution_request_changes_records_reason(tmp_path):

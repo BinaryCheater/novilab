@@ -1,6 +1,10 @@
 from pathlib import Path
+import json
 
 from .ids import new_id
+from .kernels import require_deepagents_kernel
+from .model_providers import resolve_deepagents_model
+from .skills import discover_skills
 from .store import (
     active_session,
     append_jsonl,
@@ -48,6 +52,181 @@ def _append_import_section(target_text, import_contribution, source_text, source
     return f"{base}\n\n{section}\n" if base else f"{section}\n"
 
 
+def _deepagents_file_content(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return str(value.get("content", value.get("data", value)))
+    return str(getattr(value, "content", value))
+
+
+def _message_content(message):
+    if isinstance(message, dict):
+        return str(message.get("content", ""))
+    return str(getattr(message, "content", ""))
+
+
+def _archive_deepagents_messages(run_dir, result):
+    if not isinstance(result, dict) or not result.get("messages"):
+        return
+    for index, message in enumerate(result["messages"]):
+        append_jsonl(
+            Path(run_dir) / "deepagents_messages.jsonl",
+            {
+                "index": index,
+                "role": getattr(message, "role", None) or (message.get("role") if isinstance(message, dict) else type(message).__name__),
+                "content": _message_content(message),
+                "message_type": type(message).__name__,
+            },
+        )
+
+
+def _extract_json_payload(text):
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _extract_deepagents_outputs(result):
+    files = result.get("files", {}) if isinstance(result, dict) else {}
+    normalized = {str(path).lstrip("/"): _deepagents_file_content(value) for path, value in files.items()}
+    analysis = normalized.get("analysis_note.md") or normalized.get("analysis.md")
+    proposed = normalized.get("proposed.md") or normalized.get("target.md")
+    response_text = ""
+    if isinstance(result, dict) and result.get("messages"):
+        response_text = _message_content(result["messages"][-1])
+    elif isinstance(result, str):
+        response_text = result
+    payload = _extract_json_payload(response_text)
+    analysis = analysis or payload.get("analysis_markdown") or payload.get("analysis_note")
+    proposed = proposed or payload.get("proposed_markdown") or payload.get("proposed_document")
+    return analysis, proposed, response_text
+
+
+def _skill_text(root, skill_id):
+    for skill in discover_skills(root):
+        if skill["id"] == skill_id:
+            return Path(skill["path"]).read_text(encoding="utf-8")
+    return ""
+
+
+def _processing_prompt(root, workflow_record, source_text, source_artifact, import_contribution, target, target_text):
+    skill_ids = []
+    for step in workflow_record.get("steps", []):
+        skill_ids.extend(step.get("skill_refs", []))
+    skill_sections = []
+    for skill_id in dict.fromkeys(skill_ids):
+        text = _skill_text(root, skill_id)
+        if text:
+            skill_sections.extend([f"## Skill: {skill_id}", "", text.strip(), ""])
+    return "\n".join(
+        [
+            workflow_prompt(workflow_record).strip(),
+            "",
+            "# Novi Document Processing Output Protocol",
+            "",
+            "Return virtual files when possible:",
+            "- /analysis_note.md: Markdown analysis note.",
+            "- /proposed.md: Complete proposed target Markdown document when a target is provided.",
+            "",
+            "If virtual files are unavailable, respond with JSON:",
+            '{"analysis_markdown": "...", "proposed_markdown": "..."}',
+            "",
+            "# Skills",
+            "",
+            *skill_sections,
+            "# Source Refs",
+            "",
+            f"- Import contribution: {import_contribution['id']}",
+            f"- Source artifact: {source_artifact['id']}",
+            "",
+            "# Imported Document",
+            "",
+            source_text.strip(),
+            "",
+            "# Target Document",
+            "",
+            f"- Target: {target or '-'}",
+            "",
+            target_text.strip() if target_text else "(no target provided)",
+            "",
+        ]
+    )
+
+
+def _run_deepagents_processing(root, run_dir, run_record, workflow_record, source_text, source_artifact, import_contribution, target, target_text):
+    deepagents = require_deepagents_kernel()
+    create_deep_agent = getattr(deepagents, "create_deep_agent")
+    prompt = _processing_prompt(root, workflow_record, source_text, source_artifact, import_contribution, target, target_text)
+    prompt_path = Path(run_dir) / "processing_prompt.md"
+    prompt_path.write_text(prompt, encoding="utf-8")
+    participant = {
+        "agent_id": "agent_orchestrator",
+        "model_profile": "deterministic-local",
+    }
+    model, model_record = resolve_deepagents_model(root, participant)
+    started_at = utc_now()
+    try:
+        agent = create_deep_agent(
+            model=model,
+            tools=[],
+            system_prompt=prompt,
+            name="agent_orchestrator",
+        )
+        result = agent.invoke(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Process the imported document according to the WorkflowSpec and output protocol.",
+                    }
+                ]
+            }
+        )
+        _archive_deepagents_messages(run_dir, result)
+        analysis, proposed, response_text = _extract_deepagents_outputs(result)
+        (Path(run_dir) / "response.md").write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
+        append_jsonl(
+            Path(run_dir) / "model_calls.jsonl",
+            {
+                "run_id": run_record["id"],
+                "agent_id": "agent_orchestrator",
+                **model_record,
+                "kernel": "deepagents",
+                "status": "success",
+                "started_at": started_at,
+                "completed_at": utc_now(),
+                "prompt_path": str(prompt_path),
+            },
+        )
+        return analysis, proposed
+    except Exception as exc:
+        append_jsonl(
+            Path(run_dir) / "model_calls.jsonl",
+            {
+                "run_id": run_record["id"],
+                "agent_id": "agent_orchestrator",
+                **model_record,
+                "kernel": "deepagents",
+                "status": "error",
+                "started_at": started_at,
+                "completed_at": utc_now(),
+                "prompt_path": str(prompt_path),
+                "error": str(exc),
+            },
+        )
+        raise RuntimeError(f"DeepAgents document processing failed: {exc}") from exc
+
+
 def _step(workflow, step_id, status, artifact_ids=None, contribution_ids=None, skipped_reason=None):
     step_spec = next((item for item in workflow.get("steps", []) if item.get("id") == step_id), {})
     result = {
@@ -69,8 +248,8 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     workflow_record = load_workflow(root, workflow)
     if workflow_record.get("id") != "document-merge":
         raise RuntimeError(f"Unsupported processing workflow: {workflow}")
-    if kernel != "simple":
-        raise RuntimeError("Document processing currently supports --kernel simple.")
+    if kernel not in {"simple", "deepagents"}:
+        raise RuntimeError(f"Unsupported processing kernel: {kernel}")
 
     session = active_session(root)
     if target:
@@ -81,6 +260,10 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     source_artifact = load_artifact(root, import_contribution["artifact_id"])
     source_path = Path(source_artifact["path"])
     source_text = source_path.read_text(encoding="utf-8", errors="replace")
+    target_text = ""
+    if target:
+        target_path_for_prompt = Path(target)
+        target_text = target_path_for_prompt.read_text(encoding="utf-8") if target_path_for_prompt.exists() else ""
 
     run_id = new_id("run")
     run_dir = create_run_dir(root, run_id)
@@ -108,9 +291,24 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     (run_dir / "workflow_prompt.md").write_text(workflow_prompt(workflow_record), encoding="utf-8")
     run_record["step_results"].append(_step(workflow_record, "load_import", "completed"))
 
+    model_analysis = None
+    model_proposed = None
+    if kernel == "deepagents":
+        model_analysis, model_proposed = _run_deepagents_processing(
+            root,
+            run_dir,
+            run_record,
+            workflow_record,
+            source_text,
+            source_artifact,
+            import_contribution,
+            target,
+            target_text,
+        )
+
     analysis_artifact_id = new_id("art")
     analysis_path = run_dir / "artifacts" / f"{analysis_artifact_id}-analysis-note.md"
-    analysis_text = "\n".join(
+    analysis_text = model_analysis or "\n".join(
         [
             "# Analysis Note",
             "",
@@ -151,7 +349,7 @@ def process_imported_document(root, contribution_id, workflow="document-merge", 
     if target:
         target_path = Path(target)
         target_text = target_path.read_text(encoding="utf-8") if target_path.exists() else ""
-        proposed = _append_import_section(
+        proposed = model_proposed or _append_import_section(
             target_text,
             import_contribution,
             source_text,

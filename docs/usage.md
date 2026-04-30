@@ -258,6 +258,30 @@ uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli proce
 
 这会创建一个 processing run、一个 analysis note artifact，以及一个 `document_patch` contribution。没有 `--target` 时只生成 analysis note，不生成可 apply patch。
 
+使用 DeepAgents/LLM 路径：
+
+```bash
+uv run --python 3.12 --extra dev --extra deepagents python -m novi_lab.cli process contrib_... \
+  --workflow document-merge \
+  --target .novi/knowledge/topics/physical-priors.md \
+  --kernel deepagents
+```
+
+LLM 路径会把 WorkflowSpec、`document.curate`、`document.merge`、导入文档和目标文档拼成 `processing_prompt.md`。模型应优先返回 virtual files：
+
+```text
+/analysis_note.md
+/proposed.md
+```
+
+如果执行环境不支持 virtual files，也可以返回 JSON：
+
+```json
+{"analysis_markdown": "...", "proposed_markdown": "..."}
+```
+
+Novi 会把 analysis 写成 artifact，把 proposed target document 转成 `document_patch` contribution。是否合并仍然由 `contribution check/accept` 控制。
+
 检查 patch：
 
 ```bash
