@@ -115,6 +115,55 @@ def default_workflows():
             "success_signals": ["run_created", "output_archived", "trace_available"],
         },
         {
+            "id": "research-iteration",
+            "version": 1,
+            "status": "active",
+            "title": "Research Iteration",
+            "description": "Use DeepAgents to frame a topic, map evidence, propose experiment iterations, and extract reviewable physical prior candidates.",
+            "inputs": {
+                "required": ["objective"],
+                "optional": ["accepted_knowledge", "imported_documents", "experiment_logs", "active_skills"],
+            },
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {
+                    "id": "frame_topic",
+                    "title": "Frame topic and map evidence",
+                    "kind": "produce_artifact",
+                    "actor": "agent",
+                    "agent_ref": "agent_orchestrator",
+                    "skill_refs": ["topic.research", "document.evidence"],
+                    "instructions": "Create topic-brief.md and evidence-map.md. Define the topic, scope, known facts, unknowns, hypotheses, evidence, assumptions, mechanisms, uncertainty, and falsification notes.",
+                    "required": True,
+                },
+                {
+                    "id": "iterate_and_extract",
+                    "title": "Design experiment iteration and extract priors",
+                    "kind": "produce_artifact",
+                    "actor": "agent",
+                    "agent_ref": "agent_orchestrator",
+                    "skill_refs": ["experiment.iterate", "physics.prior.extract", "document.evidence"],
+                    "instructions": "Create hypotheses.md, experiment-plan.md, iteration-log.md, physical-priors.md, and proposals.md. Propose the smallest useful next trial and extract prior candidates with statement, mechanism, evidence, boundary, counterexample, confidence, and next validation step.",
+                    "required": True,
+                },
+                {
+                    "id": "review",
+                    "title": "Review prior candidates and proposals",
+                    "kind": "review_gate",
+                    "actor": "human",
+                    "decision": {"options": ["accept", "request_changes", "continue"]},
+                    "required": False,
+                },
+            ],
+            "success_signals": [
+                "topic_brief_created",
+                "evidence_map_created",
+                "experiment_plan_created",
+                "physical_prior_candidates_created",
+                "outputs_archived",
+            ],
+        },
+        {
             "id": "reflection-loop",
             "version": 1,
             "status": "active",
@@ -267,10 +316,18 @@ def workflow_step_instruction(workflow, task, step):
         "Execute only this workflow step. Use accepted knowledge, active skills, prior task runs, and available tools.",
         "",
         "For research or reflection steps, produce durable Markdown working files when possible. Prefer these filenames when they fit the step:",
+        "- topic-brief.md for topic scope, known facts, unknowns, and evidence needs",
+        "- evidence-map.md for claims, evidence, assumptions, mechanisms, uncertainty, and falsification notes",
+        "- hypotheses.md for ranked hypotheses and expected observations",
+        "- experiment-plan.md for the next minimal experiment, variables, controls, measurements, and stop criteria",
+        "- iteration-log.md for the trial record template and interpretation notes",
+        "- physical-priors.md for reviewable physical prior candidates with evidence, boundaries, counterexamples, confidence, and next validation",
         "- research-note.md for findings, synthesis, assumptions, and uncertainty",
         "- next-actions.md for concrete follow-up steps and open questions",
         "- proposals.md for proposed knowledge, skill, or workflow changes that need review",
     ]
+    if step.get("skill_refs"):
+        lines.extend(["", f"Step skill refs: {', '.join(step.get('skill_refs', []))}"])
     if step.get("instructions"):
         lines.extend(["", "Step instructions:", step["instructions"]])
     lines.extend(

@@ -45,6 +45,15 @@ novi doctor model
 novi task "围绕接触先验整理已有知识，形成一版研究假设和下一步行动" --steps 2
 ```
 
+如果目标是快速完成 topic、证据、实验迭代和物理先验候选的闭环，使用：
+
+```bash
+novi task "围绕接触先验分析材料，设计下一轮最小实验，并抽取隐含物理先验" \
+  --workflow research-iteration \
+  --kernel deepagents \
+  --steps 2
+```
+
 查看输出：
 
 ```bash
@@ -96,4 +105,3 @@ novi accept --reviewed --task task_...
 uv run --extra dev --extra deepagents novi --help
 uv run --extra dev --extra deepagents novi task "研究目标" --steps 2
 ```
-

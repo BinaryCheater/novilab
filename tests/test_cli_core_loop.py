@@ -114,6 +114,25 @@ def test_skill_list_shows_builtin_skills(tmp_path):
     assert "memory.curate" in result.stdout
     assert "document.curate" in result.stdout
     assert "document.merge" in result.stdout
+    assert "topic.research" in result.stdout
+    assert "document.evidence" in result.stdout
+    assert "experiment.iterate" in result.stdout
+    assert "physics.prior.extract" in result.stdout
+
+
+def test_init_creates_research_iteration_workflow(tmp_path):
+    result = run_cli(tmp_path, "init")
+
+    assert result.returncode == 0, result.stderr
+    workflow_path = tmp_path / ".novi" / "workflows" / "research-iteration.yaml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    assert workflow_path.exists()
+    assert "id: research-iteration" in workflow_text
+    assert "topic.research" in workflow_text
+    assert "document.evidence" in workflow_text
+    assert "experiment.iterate" in workflow_text
+    assert "physics.prior.extract" in workflow_text
+    assert "physical-priors.md" in workflow_text
 
 
 def test_agent_create_list_and_show(tmp_path):
@@ -1562,6 +1581,75 @@ def test_task_deepagents_research_loop_archives_model_artifacts(tmp_path):
         assert "Concrete research output." in (run_dir / "response.md").read_text(encoding="utf-8")
         assert "model response artifact" in (run_dir / "summary.md").read_text(encoding="utf-8")
         assert "DeepAgents files" in run_cli(tmp_path, "trace", run_id).stdout
+
+
+def test_research_iteration_workflow_injects_step_skills_and_exports_prior_artifacts(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    calls = 0",
+                "",
+                "    def __init__(self, model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "        self.system_prompt = system_prompt or ''",
+                "",
+                "    def invoke(self, payload):",
+                "        FakeAgent.calls += 1",
+                "        if FakeAgent.calls == 1:",
+                "            assert 'topic.research' in self.system_prompt",
+                "            assert 'topic-brief.md' in self.system_prompt",
+                "            return {",
+                "                'messages': [FakeMessage('topic framed')],",
+                "                'files': {'/topic-brief.md': {'content': '# Topic Brief\\n\\nContact prior.'}}",
+                "            }",
+                "        assert 'physics.prior.extract' in self.system_prompt or 'experiment.iterate' in self.system_prompt",
+                "        assert 'physical-priors.md' in self.system_prompt",
+                "        return {",
+                "            'messages': [FakeMessage('prior extracted')],",
+                "            'files': {'/physical-priors.md': {'content': '# Physical Priors\\n\\n- Contact is sparse evidence.'}}",
+                "        }",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools=tools, system_prompt=system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Infer useful contact priors from notes and planned experiments",
+        "--workflow",
+        "research-iteration",
+        "--kernel",
+        "deepagents",
+        "--steps",
+        "2",
+    )
+
+    assert result.returncode == 0, result.stderr
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    run_ids = re.findall(r"\b(run_[0-9TZA-Z_a-z]+)\b", inspect.stdout)
+    assert len(run_ids) >= 2
+    first_prompt = tmp_path / ".novi" / "runs" / run_ids[-2] / "prompt_parts" / "30-skills.md"
+    second_run_dir = tmp_path / ".novi" / "runs" / run_ids[-1]
+    second_prompt = second_run_dir / "prompt_parts" / "30-skills.md"
+    assert "topic.research" in first_prompt.read_text(encoding="utf-8")
+    second_prompt_text = second_prompt.read_text(encoding="utf-8")
+    assert "document.evidence" in second_prompt_text
+    assert "experiment.iterate" in second_prompt_text
+    assert "physics.prior.extract" in second_prompt_text
+    assert (second_run_dir / "deepagents_files" / "physical-priors.md").exists()
+    artifact_text = "\n".join(path.read_text(encoding="utf-8") for path in (second_run_dir / "artifacts").glob("*.yaml"))
+    assert "physical-priors.md" in artifact_text
 
 
 def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
