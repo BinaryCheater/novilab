@@ -48,6 +48,11 @@ Check before running:
 novi doctor model
 ```
 
+For SiliconCloud, prefer a model whose OpenAI-compatible tool calls are parsed correctly
+by LangChain and DeepAgents. `MiniMaxAI/MiniMax-M2.5` has been verified with Novi tool
+calls. If a model returns empty responses or `finish_reason=tool_calls` without executable
+tool calls, switch models before debugging Novi.
+
 ## Run From A Topic
 
 ```bash
@@ -81,6 +86,50 @@ novi ingest notes/contact-prior-notes.md \
   --hint "Use this as evidence for the contact-prior research iteration."
 ```
 
+For PDFs and papers, keep the original file as a source artifact and let a skill or
+DeepAgents shell/tool backend extract text with project-local tools such as `pdftotext`,
+PyMuPDF, Docling, Marker, or OCR. Novi should not own a custom PDF parser unless a thin
+wrapper is needed for repeatability or artifact capture.
+
+For known URLs, use `curl` or a browser/computer-use skill and store the fetched page,
+cleaned text, screenshot, or notes as artifacts. Use Tavily or another search API only
+when broad web discovery is actually needed.
+
+For experiment results, start with a result packet rather than a rigid schema:
+
+```markdown
+---
+type: experiment_result
+title: Contact-prior trial 001
+status: draft
+topic: contact-prior
+artifacts:
+  - data/raw/trial-001.csv
+  - plots/trial-001-pressure.png
+---
+
+# Contact-prior trial 001
+
+## What Was Tried
+
+Natural-language setup, parameters, and procedure.
+
+## Observations
+
+Raw outcomes, anomalies, failure modes, and notable measurements.
+
+## Interpretation
+
+What this appears to support or weaken, including uncertainty.
+
+## Next Action
+
+The smallest useful follow-up.
+```
+
+Leave unclear structure in natural language. The next `research-iteration` run can extract
+claims, observations, interpretations, and prior updates from the packet.
+
 Review any proposed patches before continuing:
 
 ```bash
@@ -100,3 +149,6 @@ novi artifact list
 Use the exported `physical-priors.md` as a candidate list, not as accepted durable memory.
 Accept only evidence-backed updates through the review path.
 
+Do not convert every prior candidate into a structured record immediately. Use Markdown
+review first; add structured prior contributions only after repeated runs show that
+Markdown review is too loose.
