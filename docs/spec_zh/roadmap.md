@@ -131,7 +131,7 @@ Build check:
 - [ ] Tool routing 可表达 allowlist/expose_to 语义，同时每个 external tool 仍必须表示为 Novi ToolSpec，包含 risk、policy 和 artifact behavior。
 - [ ] Layered Markdown knowledge vault 可被引用或初始化，raw inputs/excerpts、analysis notes、accepted conclusions、indexes 和 syntheses 作为不同层处理。
 - [ ] Agent/session mid-term memory 可作为 file-backed execution memory 保存，但不等于 accepted project knowledge。
-- [ ] Generated workflow 可保存为类似 `WorkflowSpec` 的记录，包含 steps、success signals、agent assignments、required artifacts、tool requirements 和 iteration triggers。
+- [x] Project-local workflows 可保存为类似 `WorkflowSpec` 的 YAML records，包含 steps、success signals、agent assignments、required artifacts、tool requirements 和 iteration triggers。更自动化的 workflow drafting 后续增量推进。
 - [ ] Agent-generated workflow、prompt、skill、document 或 memory changes 保存为 patches/contributions，而不是静默编辑。
 - [ ] 用户可以把 project knowledge、notes、paper snippets、prior experiment logs、links 或 direct agent-session exports 导入为 artifacts 和 contributions。
 - [ ] Imported knowledge 可由 scoped agent 处理为 analysis notes，并生成一个或多个针对 document library、workflow records 或 project-local skills 的 patch proposals。用户提供 target 时，它是 hard constraint，而不是默认路径。
@@ -147,7 +147,7 @@ Acceptance check:
 - [ ] 一个 run 可包含至少一个 user-level/collaborator agent 和一个 reviewer/auditor 或 executor agent，并具有不同 scopes。
 - [ ] 一个 imported raw input 或 link 可作为 source artifact 保存，并用于产出 analysis note 或 claim candidate。
 - [ ] 一个 imported document 可处理为 analysis note 和至少一个由 agent 选择或由用户约束的 reviewable document patch，然后被 accept 或 reject。
-- [ ] 一个 workflow 可被 draft、浅层执行、反思并 patch。
+- [x] 一个 workflow 可被定义并浅层执行；反思和 patch 使用 reviewable contribution path，完全自动的 proposal extraction 后续增量推进。
 - [ ] 一个 workflow patch、memory/knowledge contribution 或 prompt/skill suggestion 可通过 review 被 accept 或 reject。
 - [ ] 一个 evidence-backed conclusion 或 procedure 可写入，或被提议写入，layered Markdown knowledge vault，而不绕过 review。
 - [ ] 一个 session 可使用 file-backed mid-term memory 管理 context，但不把它当作 accepted project knowledge。
@@ -412,5 +412,5 @@ Open:
 4. Coding worker 是否作为 cowork 的第一个真实 worker adapter，还是应先做 human review/approval？
 5. Physical-AI 中 simulation、training、dataset、evaluation、ROS 的先后关系如何定？
 6. Phase 1.5 多宽才仍是 integrated exploration，而不是 overdesign？
-7. `exploration.md` 中哪些新 records 应先进入 durable data model：`AgentProfile`、`WorkflowSpec`、`Contribution`、`KnowledgeImport`、`ClaimCandidate`、`MemoryRecord`？
+7. 在本地原型已经具备 AgentProfile-like records、WorkflowSpec-like records、TaskSpec-like records 和 Contribution records 后，`exploration.md` 中哪些剩余 records 应下一步进入 durable data model？
 8. 最小 demo 是什么，能证明 Novi 支持 scientific self-iteration，而不是只整理 agent transcripts？

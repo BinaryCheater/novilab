@@ -212,6 +212,39 @@ V0 从 deterministic mock/local runner 起步；配置兼容模型 provider 后�
 
 原型说明：在命令面最终统一前，已实现命令可能叫 `novi tool show <tool_id>`。
 
+## Workflow Commands
+
+Phase 1.5 已包含基础 workflow list/show 命令。Drafting 和 patch-specific
+commands 仍是候选，因为 workflow 演化当前使用通用 contribution path。
+
+### `novi workflow draft <objective>`
+
+创建可 review 的 WorkflowSpec-like record 或 artifact，包含 steps、success
+signals、agent assignments、required artifacts、tool requirements 和 iteration
+triggers。
+
+### `novi workflow list`
+
+列出 workflow records，显示 status、version、title 和 updated time。
+
+### `novi workflow show <workflow_id>`
+
+显示 workflow steps、assigned agents、required tools、success signals、accepted
+patches、pending patches 和 related runs。
+
+### `novi workflow patch <workflow_id>`
+
+创建或显示 proposed workflow revisions。Agent-generated workflow changes
+必须是 patches 或 contributions，不能静默编辑。
+
+### `novi workflow accept-patch <patch_id>`
+
+接受 workflow patch 并记录 review decision。
+
+### `novi workflow reject-patch <patch_id>`
+
+拒绝 workflow patch 并记录 review decision。
+
 ## Doctor Commands
 
 ### `novi doctor model`

@@ -65,6 +65,10 @@ novi memory review
 
 核心 v0 方向已经接受。Phase 1 本地核心实现已经可用，Phase 1.5 正在收敛为 integrated research loop。
 
-当前原型已经可以创建本地 `.novi/` 工作区、列出 skills、创建和打开 sessions、创建 runs、归档 prompt/context 记录、保存 project-local model 配置、通过 deterministic local kernel 或可选 DeepAgents kernel 执行、调用 OpenAI-compatible chat-completions provider，并检查 run output/trace。`novi ask` 会记录多轮 user/assistant messages，并创建可审计 runs。`novi task` 可以创建由 workflow 支撑的可恢复任务、推进 workflow steps、把模型回复和 working files 归档为 artifacts，并在存在 pending contribution 时停在 review gate。`novi ingest` 会把导入文档保存为 artifacts，并可把 agent proposal 转成可 review 的 document patch contribution。
+当前原型已经可以创建本地 `.novi/` 工作区、列出 skills、创建和打开 sessions、创建 runs、归档 prompt/context 记录、保存 project-local model 配置、通过 deterministic local kernel 或可选 DeepAgents kernel 执行、调用 OpenAI-compatible chat-completions provider，并检查 run output/trace。`novi ask` 会记录多轮 user/assistant messages，并创建可审计 runs。`novi task` 可以创建由 workflow 支撑的可恢复任务、推进 workflow steps、把模型回复和 DeepAgents working files 归档为 artifacts，并在存在 pending contribution 时停在 review gate。`novi ingest` 会把导入文档保存为 artifacts，并可把 agent proposal 转成可 review 的 document patch contribution。
+
+Phase 1.5 已经具备真实最小 research-iteration loop。`research-iteration` workflow 使用 `topic.research`、`document.evidence`、`experiment.iterate` 和 `physics.prior.extract` skills，把 topic 或松散材料转成 topic brief、evidence map、hypotheses、experiment plan、iteration log、physical-prior candidates 和 proposals。使用 SiliconCloud/OpenAI-compatible 的 `MiniMaxAI/MiniMax-M2.5` 已验证 DeepAgents 可以调用 Novi-wrapped tools，并把 working files 导出为 Novi artifacts。Provider compatibility 仍然和具体模型有关；如果某个模型返回不规范 chat-completions tool-call role，应优先切换模型，而不是把它视为 Novi Tool Runtime 错误。
+
+Source intake 保持轻量。PDF、论文、网页、实验日志、datasets、plots 和 videos 应先作为 source/result artifacts 进入系统。Skills 和 DeepAgents 可以调用外部命令或后续 browser/search tools，把它们抽取成可用 Markdown。除非真实任务反复证明自然语言 result packet 和 Markdown review 太松，否则 Novi 不应过早引入重 scientific schema。
 
 本 spec 集已冻结，除非用户明确批准 spec 变更。批准修改时应同步维护英文 `../spec/`。开发过程和实现记录应放在 `../impl/`；面向用户的说明文档应放在 `../guide/`。

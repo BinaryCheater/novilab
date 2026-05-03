@@ -539,7 +539,9 @@ or memory candidate creation.
 
 ## Workflow Commands
 
-Phase 1.5 candidate:
+Phase 1.5 includes basic workflow list/show commands. Drafting and patch-specific
+commands remain candidates because workflow evolution currently uses the generic
+contribution path.
 
 ### `novi workflow draft <objective>`
 
@@ -551,7 +553,7 @@ triggers.
 
 Lists workflow records by status, version, title, and updated time.
 
-### `novi workflow inspect <workflow_id>`
+### `novi workflow show <workflow_id>`
 
 Shows workflow steps, assigned agents, required tools, success signals,
 accepted patches, pending patches, and related runs.
