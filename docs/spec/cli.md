@@ -537,6 +537,39 @@ Acceptance is intentionally deferred until merge behavior is explicit for each
 target, such as knowledge vault update, workflow patch, prompt/skill suggestion,
 or memory candidate creation.
 
+## Task Commands
+
+Phase 1.5 includes resumable workflow-backed tasks as the practical operator
+surface for multi-run work.
+
+### `novi task <objective> --workflow <workflow_id>`
+
+Creates a task in the active session, initializes its WorkflowSpec state, and
+starts execution.
+
+Expected options:
+
+- `--workflow <workflow_id>` chooses the task workflow. The default may remain
+  `research-loop`, while scientific topic work should use `research-iteration`.
+- `--kernel simple|deepagents` chooses the execution kernel.
+- `--rounds <n>` is the day-to-day control surface. One round means one complete
+  workflow iteration up to the next human review gate, not one LLM call.
+- `--steps <n>` remains available for debugging and partial workflow execution.
+
+For the current `research-iteration` workflow, one round runs `frame_topic` and
+`iterate_and_extract`, producing evidence, hypotheses, experiment-plan,
+iteration-log, physical-prior candidates, and proposals as reviewable artifacts.
+
+### `novi task continue <task_id>`
+
+Resumes a task from its recorded WorkflowSpec state. Pending reviewable
+contributions should block continuation until they are reviewed or accepted.
+
+### `novi task inspect <task_id>`
+
+Shows task status, workflow id, current step, completed steps, and run ids so an
+operator can see exactly what a round executed.
+
 ## Workflow Commands
 
 Phase 1.5 includes basic workflow list/show commands. Drafting and patch-specific

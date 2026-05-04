@@ -59,11 +59,18 @@ tool calls, switch models before debugging Novi.
 novi task "从接触先验角度分析这些材料，设计下一轮最小实验，并抽取隐含物理先验" \
   --workflow research-iteration \
   --kernel deepagents \
-  --steps 2
+  --rounds 1
 ```
 
-The first step frames the topic and maps evidence. The second step proposes the next
-experiment iteration and extracts physical prior candidates.
+One round means one complete research iteration. Internally, the current
+`research-iteration` workflow runs two agent steps:
+
+1. `frame_topic`: frame the topic and map evidence.
+2. `iterate_and_extract`: propose the next experiment iteration and extract physical
+   prior candidates.
+
+`--steps` still exists for internal debugging or partial workflow execution, but day-to-day
+research should use `--rounds`.
 
 Expected DeepAgents working files include:
 
@@ -135,7 +142,7 @@ Review any proposed patches before continuing:
 ```bash
 novi review --task task_... --check --agent
 novi accept --reviewed --task task_...
-novi task continue task_... --workflow research-iteration --kernel deepagents --steps 2
+novi task continue task_... --workflow research-iteration --kernel deepagents --rounds 1
 ```
 
 ## Inspect Results
@@ -148,6 +155,10 @@ novi artifact list
 
 Use the exported `physical-priors.md` as a candidate list, not as accepted durable memory.
 Accept only evidence-backed updates through the review path.
+
+Use `novi task inspect task_...` to see the current workflow step, completed steps, and run
+IDs. A completed `research-iteration` round should show both `frame_topic` and
+`iterate_and_extract` in completed steps and two new run IDs for that round.
 
 Do not convert every prior candidate into a structured record immediately. Use Markdown
 review first; add structured prior contributions only after repeated runs show that

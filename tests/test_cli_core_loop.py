@@ -1652,6 +1652,51 @@ def test_research_iteration_workflow_injects_step_skills_and_exports_prior_artif
     assert "physical-priors.md" in artifact_text
 
 
+def test_research_iteration_round_runs_complete_cycle(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run one research iteration round",
+        "--workflow",
+        "research-iteration",
+        "--kernel",
+        "simple",
+        "--rounds",
+        "1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Task rounds: 1" in result.stdout
+    assert "Task runs: 2" in result.stdout
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    assert "frame_topic" in inspect.stdout
+    assert "iterate_and_extract" in inspect.stdout
+
+
+def test_task_round_stops_before_human_review_gate(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run one default research round",
+        "--kernel",
+        "simple",
+        "--rounds",
+        "1",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Task rounds: 1" in result.stdout
+    assert "Task runs: 2" in result.stdout
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    assert "Completed steps: plan, work" in inspect.stdout
+
+
 def test_doctor_model_reports_provider_without_secrets(tmp_path, monkeypatch):
     monkeypatch.setenv("NOVI_MODEL_PROVIDER", "openai_chat")
     monkeypatch.setenv("NOVI_MODEL", "Pro/zai-org/GLM-4.7")

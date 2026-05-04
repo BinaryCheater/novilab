@@ -51,7 +51,7 @@ novi task "围绕接触先验整理已有知识，形成一版研究假设和下
 novi task "围绕接触先验分析材料，设计下一轮最小实验，并抽取隐含物理先验" \
   --workflow research-iteration \
   --kernel deepagents \
-  --steps 2
+  --rounds 1
 ```
 
 查看输出：
@@ -66,7 +66,7 @@ novi artifact list
 
 ```bash
 novi task list
-novi task continue task_... --steps 2
+novi task continue task_... --rounds 1
 ```
 
 ## 4. 导入文档
@@ -103,5 +103,7 @@ novi accept --reviewed --task task_...
 
 ```bash
 uv run --extra dev --extra deepagents novi --help
-uv run --extra dev --extra deepagents novi task "研究目标" --steps 2
+uv run --extra dev --extra deepagents novi task "研究目标" \
+  --workflow research-iteration \
+  --rounds 1
 ```

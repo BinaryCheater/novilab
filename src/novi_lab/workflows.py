@@ -242,6 +242,15 @@ def workflow_steps(workflow):
     return list(workflow.get("steps", []))
 
 
+def workflow_round_size(workflow):
+    size = 0
+    for step in workflow_steps(workflow):
+        if step.get("actor") == "human":
+            break
+        size += 1
+    return max(size, 1)
+
+
 def initial_workflow_state(workflow):
     steps = workflow_steps(workflow)
     first = _next_executable_step(steps, start_index=0)
