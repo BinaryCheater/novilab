@@ -77,6 +77,16 @@ def _selected_agents(root, agents):
     return [load_agent(root, "agent_orchestrator"), load_agent(root, "agent_auditor")]
 
 
+def _run_skill_refs(run_type, workflow_step=None):
+    refs = []
+    if run_type == "research":
+        refs.append("research.review")
+    for skill_ref in (workflow_step or {}).get("skill_refs", []):
+        if skill_ref not in refs:
+            refs.append(skill_ref)
+    return refs
+
+
 def start_deterministic_run(root, session, run_type, objective, agents=None, kernel="simple", preflight_tools=True, task_id=None, workflow_id=None, workflow_step=None):
     validate_kernel(kernel)
     now = utc_now()
@@ -100,7 +110,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "updated_at": now,
         "actor": "local_user",
         "kernel": kernel,
-        "skill_refs": ["research.review"] if run_type == "research" else [],
+        "skill_refs": _run_skill_refs(run_type, workflow_step=workflow_step),
         "task_id": task_id,
         "workflow_id": workflow_id,
         "workflow_step_id": (workflow_step or {}).get("id"),

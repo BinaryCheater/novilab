@@ -125,11 +125,19 @@ Boundaries:
 - DeepAgents subagents are execution-level helpers, not automatically Novi platform agents.
 - LangGraph checkpoints are execution recovery state, not Novi RunLedger.
 - DeepAgents filesystem is working memory, not Novi ArtifactStore or long-term memory.
-- DeepAgents tools must wrap Novi Tool Runtime and must not receive high-risk native tools directly.
-- DeepAgents built-in filesystem and shell tools should be mapped deliberately to Novi tools before being enabled; direct high-risk built-ins are not the default.
+- DeepAgents model-side tool calls that target Novi capabilities must wrap Novi Tool Runtime and record `source=deepagents_model`.
+- DeepAgents built-in filesystem working-file tools may be used for drafts and intermediate files when Novi exports the resulting files as artifacts.
+- DeepAgents built-in shell, network, browser, SSH, simulation, and training tools may be enabled through an explicit backend/permission decision. They do not need to be reimplemented by Novi, but their outputs, logs, and important side effects must be captured as artifacts/events when they matter to evidence or replay.
+- Direct high-risk built-ins are not the default; enable them only for a scoped run or workflow with clear policy.
 - Stable system, skill, and tool instructions should be separated from dynamic conversation turns to support cache-friendly provider requests.
 - `prompt.md` is a human-readable archive. `model_messages.jsonl` and related request records represent the structured provider/kernel boundary.
 - Novi still owns sessions, runs, tools, artifacts, memory, policy, and audit.
+
+Verified Phase 1.5 behavior:
+
+- OpenAI-compatible SiliconCloud runs can execute DeepAgents through the `openai_chat` provider path.
+- `MiniMaxAI/MiniMax-M2.5` has verified model-side Novi wrapper tool calls and DeepAgents working-file export.
+- Some compatible-provider models may return malformed or non-standard tool-call messages, such as empty roles. If LangChain/DeepAgents cannot parse tool calls from a specific model, switch models or provider normalization before changing Novi Tool Runtime.
 
 ## Model Provider Adapter
 
@@ -149,6 +157,10 @@ The current compatible-provider path uses chat-completions semantics. That is en
 
 LiteLLM remains a useful future gateway for more providers and Anthropic-style APIs, but it is not required for the first SiliconFlow-compatible path.
 
+Decision:
+
+Provider compatibility is model-specific. Novi should expose configuration and trace records clearly enough to diagnose provider issues, but it should not assume every OpenAI-compatible model supports parseable tool calls. The recommended first verified SiliconCloud model for tool-using DeepAgents runs is `MiniMaxAI/MiniMax-M2.5`; other models can be used after a tool-call smoke test.
+
 ## Research, Web Search, And Deep Research
 
 Proposal:
@@ -160,7 +172,7 @@ Novi should compose research capabilities from modules rather than depend on one
 | `search.query` | Keyword search and candidate sources | `search_stub` first; Tavily, Brave Search API, SearXNG, SerpAPI later | Search result artifact |
 | `web.fetch` | Static page fetch, HTML/text capture | httpx, requests, trafilatura, markdownify | Fetched page artifact |
 | `browser.open/read` | Dynamic pages, JS-rendered pages, logged-in pages | Playwright, browser-use, Browser MCP | Screenshot/HTML/text artifacts |
-| `pdf.parse` | PDF and paper parsing | PyMuPDF, pypdf, unstructured | Document text artifact |
+| `pdf.parse` | PDF and paper parsing | External commands and skills such as `pdftotext`, PyMuPDF, Docling, Marker, OCR; pypdf/unstructured later | Original file plus extracted text/notes artifacts |
 | `source.extract` | Extract claims, quotes, metadata, citations | Custom parser, LlamaIndex/Haystack later | Source note/evidence artifact |
 | `deep_research.run` | Multi-round search, reading, evidence table, synthesis report | DeepAgents + LangGraph orchestrating the above tools; optional hosted deep-research provider adapter | Research report, evidence table, source bundle |
 
@@ -187,6 +199,57 @@ Principles:
 - Important claims should trace back to source artifacts.
 - Browser, download, login, paid access, and high-frequency crawling need policy.
 - Search providers should remain replaceable.
+- PDF and paper handling should be skill/tool driven, not a Novi-native parser. Preserve originals, extract text through available commands or libraries, and feed generated Markdown into evidence workflows.
+- Broad web discovery can use Tavily or another search API when needed. Known URLs can be fetched with `curl` or a browser/computer-use skill. Web artifacts should remain ordinary source artifacts.
+
+## Research Iteration And Result Intake
+
+Decision:
+
+Phase 1.5 includes `research-iteration` as a concrete workflow for topic-driven scientific work. It is not the only future research workflow; users should be able to define focused project-local workflows for specific tasks.
+
+The current loop:
+
+```text
+topic or loose material
+→ frame topic and map evidence
+→ design next experiment iteration
+→ extract physical-prior candidates
+→ export working files as artifacts
+→ review proposals before accepted state changes
+```
+
+Expected working files include:
+
+- `topic-brief.md`
+- `evidence-map.md`
+- `hypotheses.md`
+- `experiment-plan.md`
+- `iteration-log.md`
+- `physical-priors.md`
+- `proposals.md`
+
+Experiment results should be returned as lightweight result packets rather than a heavy database schema. A result packet is primarily Markdown with optional frontmatter for high-value fields such as `type`, `title`, `status`, `topic`, `artifacts`, and `tags`. Raw data, plots, logs, videos, configs, and scripts should be linked as artifacts. Let the next LLM run extract claims, observations, interpretations, and prior updates from the packet.
+
+Do not immediately convert every physical prior candidate into a structured record. Use `physical-priors.md` and `proposals.md` first; add structured prior contributions only if repeated real runs show Markdown review is too loose.
+
+## Workflow Evolution And Self-Modification
+
+Decision:
+
+Workflows are project-local YAML records under `.novi/workflows/`. Document merge, research loops, research iteration, and reflection are all workflows. Different concrete research tasks may define their own workflows.
+
+Workflow self-modification is allowed only as a reviewable proposal:
+
+```text
+workflow run
+→ agent writes proposal
+→ Novi creates a patch contribution for `.novi/workflows/`, `.novi/skills/`, or `.novi/knowledge/`
+→ human/agent review and check
+→ accept applies the patch
+```
+
+Agents must not silently edit active workflow or skill files. Existing document-processing proposals already support patch targets under `.novi/workflows/` and `.novi/skills/`; general workflow-run proposal extraction can reuse the same contribution path when needed.
 
 ## Memory Tool Boundaries
 

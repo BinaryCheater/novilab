@@ -212,6 +212,70 @@ V0 从 deterministic mock/local runner 起步；配置兼容模型 provider 后�
 
 原型说明：在命令面最终统一前，已实现命令可能叫 `novi tool show <tool_id>`。
 
+## Task Commands
+
+Phase 1.5 已包含 resumable workflow-backed tasks，作为多 run 工作的实际操作入口。
+
+### `novi task <objective> --workflow <workflow_id>`
+
+创建 task，绑定 active session，初始化 WorkflowSpec state，并开始执行。
+
+预期选项：
+
+- `--workflow <workflow_id>` 选择 task workflow。默认可保持 `research-loop`，
+  topic-driven 科研工作应使用 `research-iteration`。
+- `--kernel simple|deepagents` 选择执行 kernel。
+- `--rounds <n>` 是日常控制入口。一轮表示运行一个完整 workflow iteration，直到下一个
+  human review gate 之前，不表示一次 LLM 调用。
+- `--steps <n>` 保留给内部调试和局部 workflow 执行。
+
+当前 `research-iteration` workflow 中，一轮会运行 `frame_topic` 和
+`iterate_and_extract`，产出 evidence、hypotheses、experiment-plan、
+iteration-log、physical-prior candidates 和 proposals 等可 review artifacts。
+
+### `novi task continue <task_id>`
+
+从 task 已记录的 WorkflowSpec state 继续执行。存在 pending reviewable
+contributions 时，应阻止继续执行，直到这些 contribution 被 review 或 accept。
+
+### `novi task inspect <task_id>`
+
+显示 task status、workflow id、current step、completed steps 和 run ids，让操作者能看清
+一轮实际执行了哪些内部步骤。
+
+## Workflow Commands
+
+Phase 1.5 已包含基础 workflow list/show 命令。Drafting 和 patch-specific
+commands 仍是候选，因为 workflow 演化当前使用通用 contribution path。
+
+### `novi workflow draft <objective>`
+
+创建可 review 的 WorkflowSpec-like record 或 artifact，包含 steps、success
+signals、agent assignments、required artifacts、tool requirements 和 iteration
+triggers。
+
+### `novi workflow list`
+
+列出 workflow records，显示 status、version、title 和 updated time。
+
+### `novi workflow show <workflow_id>`
+
+显示 workflow steps、assigned agents、required tools、success signals、accepted
+patches、pending patches 和 related runs。
+
+### `novi workflow patch <workflow_id>`
+
+创建或显示 proposed workflow revisions。Agent-generated workflow changes
+必须是 patches 或 contributions，不能静默编辑。
+
+### `novi workflow accept-patch <patch_id>`
+
+接受 workflow patch 并记录 review decision。
+
+### `novi workflow reject-patch <patch_id>`
+
+拒绝 workflow patch 并记录 review decision。
+
 ## Doctor Commands
 
 ### `novi doctor model`

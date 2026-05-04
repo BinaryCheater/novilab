@@ -11,9 +11,10 @@
 5. [CLI 说明](cli.md)
 6. [Workflow 模型](workflows.md)
 7. [Research Loop](research-loop.md)
-8. [文档导入](document-ingest.md)
-9. [Review 与 Artifacts](review-and-artifacts.md)
-10. [故障排查](troubleshooting.md)
+8. [Research Iteration Loop](research-iteration.md)
+9. [文档导入](document-ingest.md)
+10. [Review 与 Artifacts](review-and-artifacts.md)
+11. [故障排查](troubleshooting.md)
 
 ## 当前主线
 

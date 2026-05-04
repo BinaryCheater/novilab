@@ -125,11 +125,19 @@ LangGraph 更像 stateful agent/workflow runtime。它可以帮助 Novi 获得�
 - DeepAgents subagents 是 execution-level helpers，不自动等于 Novi platform agents。
 - LangGraph checkpoint 是 execution recovery state，不等于 Novi RunLedger。
 - DeepAgents filesystem 是 working memory，不等于 Novi ArtifactStore 或 long-term memory。
-- DeepAgents tools 必须包装 Novi Tool Runtime，不能直接拿高风险工具。
-- DeepAgents built-in filesystem 和 shell tools 应先明确映射到 Novi tools，再决定是否启用；默认不直接暴露高风险 built-ins。
+- DeepAgents 中指向 Novi 能力的 model-side tool calls 必须包装 Novi Tool Runtime，并记录 `source=deepagents_model`。
+- DeepAgents built-in filesystem working-file tools 可以用于草稿和中间文件，只要 Novi 把最终 working files 导出成 artifacts。
+- DeepAgents built-in shell、network、browser、SSH、simulation 和 training tools 可以通过显式 backend/permission 决策启用。Novi 不需要重造这些系统，但与证据或复现相关的 outputs、logs 和重要 side effects 必须被捕获为 artifacts/events。
+- 默认不直接启用高风险 built-ins；只有在 scoped run 或 workflow 中明确 policy 后才启用。
 - Stable system、skill、tool instructions 应与动态 conversation turns 分离，以支持 provider request 的 cache-friendly 结构。
 - `prompt.md` 是人类可读 archive。`model_messages.jsonl` 和相关 request records 才代表结构化 provider/kernel 边界。
 - Novi 仍然拥有 sessions、runs、tools、artifacts、memory、policy 和 audit。
+
+已验证的 Phase 1.5 行为：
+
+- OpenAI-compatible SiliconCloud runs 可以通过 `openai_chat` provider path 执行 DeepAgents。
+- `MiniMaxAI/MiniMax-M2.5` 已验证 model-side Novi wrapper tool calls 和 DeepAgents working-file export。
+- 部分 compatible-provider 模型可能返回不规范 tool-call messages，例如空 role。若 LangChain/DeepAgents 无法从某个模型解析 tool calls，应先切换模型或引入 provider normalization，而不是修改 Novi Tool Runtime。
 
 ## Model Provider Adapter
 
@@ -149,6 +157,10 @@ Phase 1 支持把 model 配置保存到 `.novi/novi.yaml`，环境变量保留�
 
 LiteLLM 仍是后续有价值的 provider gateway，尤其适合更多供应商和 Anthropic-style APIs，但第一版 SiliconFlow-compatible path 不依赖它。
 
+Decision:
+
+Provider compatibility 和具体模型有关。Novi 应清晰暴露配置和 trace records，便于诊断 provider 问题，但不应假设所有 OpenAI-compatible 模型都支持可解析 tool calls。第一个已验证适合 tool-using DeepAgents runs 的 SiliconCloud 模型是 `MiniMaxAI/MiniMax-M2.5`；其他模型应先通过 tool-call smoke test。
+
 ## Research、Web Search 与 Deep Research
 
 Proposal:
@@ -160,7 +172,7 @@ Novi 应把 research 能力拆成可组合模块，而不是只依赖一个“�
 | `search.query` | 关键词搜索、获取候选来源 | Tavily, Brave Search API, SearXNG, SerpAPI | search result artifact |
 | `web.fetch` | 抓取静态网页、保存 HTML/正文 | httpx, requests, trafilatura, markdownify | fetched page artifact |
 | `browser.open/read` | 动态网页、JS 渲染页面、登录态页面 | Playwright, browser-use, Browser MCP | screenshot/html/text artifacts |
-| `pdf.parse` | PDF/论文解析 | PyMuPDF, pypdf, unstructured | document text artifact |
+| `pdf.parse` | PDF/论文解析 | 外部命令和 skills，例如 `pdftotext`、PyMuPDF、Docling、Marker、OCR；后续 pypdf/unstructured | 原始文件和 extracted text/notes artifacts |
 | `source.extract` | 抽取 claim、quote、metadata、citation | custom parser, LlamaIndex/Haystack later | source note/evidence artifact |
 | `deep_research.run` | 多轮检索、阅读、证据表、综合报告 | DeepAgents + LangGraph orchestrating the above tools; optional hosted deep-research provider adapter | research report、evidence table、source bundle |
 
@@ -187,6 +199,57 @@ research objective
 - 每个重要 claim 应能追溯到 source artifact。
 - 浏览器、下载、登录、付费或高频抓取都应有 policy。
 - Search provider 可以替换，不能让 Tavily/Brave/SearXNG 任一方成为架构中心。
+- PDF 和论文处理应由 skill/tool 驱动，而不是 Novi-native parser。保留原文件，通过可用命令或库抽取文本，并把生成的 Markdown 输入 evidence workflows。
+- 广泛网页发现可在需要时使用 Tavily 或其他 search API。已知 URL 可以用 `curl` 或 browser/computer-use skill 抓取。Web artifacts 保持为普通 source artifacts。
+
+## Research Iteration 与 Result Intake
+
+Decision:
+
+Phase 1.5 包含 `research-iteration`，作为 topic-driven 科研工作的具体 workflow。它不是未来唯一 research workflow；用户应能为具体任务定义 project-local workflows。
+
+当前闭环：
+
+```text
+topic or loose material
+→ frame topic and map evidence
+→ design next experiment iteration
+→ extract physical-prior candidates
+→ export working files as artifacts
+→ review proposals before accepted state changes
+```
+
+预期 working files：
+
+- `topic-brief.md`
+- `evidence-map.md`
+- `hypotheses.md`
+- `experiment-plan.md`
+- `iteration-log.md`
+- `physical-priors.md`
+- `proposals.md`
+
+实验结果应以轻量 result packet 回填，而不是刚开始就设计重 database schema。Result packet 主要是 Markdown，可选 frontmatter 只保留高价值字段，例如 `type`、`title`、`status`、`topic`、`artifacts` 和 `tags`。Raw data、plots、logs、videos、configs 和 scripts 通过 artifacts 链接。下一轮 LLM run 再从 packet 的自然语言中抽取 claims、observations、interpretations 和 prior updates。
+
+不要立刻把每个 physical prior candidate 转成结构化 record。先使用 `physical-priors.md` 和 `proposals.md`；只有当多轮真实任务证明 Markdown review 太松时，再添加 structured prior contributions。
+
+## Workflow 演化与自修改
+
+Decision:
+
+Workflows 是 `.novi/workflows/` 下的 project-local YAML records。Document merge、research loops、research iteration 和 reflection 都是 workflows。不同具体科研任务可以定义自己的 workflows。
+
+Workflow self-modification 只允许作为可 review 的 proposal：
+
+```text
+workflow run
+→ agent writes proposal
+→ Novi creates a patch contribution for `.novi/workflows/`, `.novi/skills/`, or `.novi/knowledge/`
+→ human/agent review and check
+→ accept applies the patch
+```
+
+Agent 不能静默修改 active workflow 或 skill files。现有 document-processing proposals 已支持 `.novi/workflows/` 和 `.novi/skills/` 作为 patch targets；普通 workflow run 的 proposal extraction 后续可复用同一 contribution path。
 
 ## Memory 工具边界
 

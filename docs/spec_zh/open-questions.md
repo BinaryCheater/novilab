@@ -49,6 +49,7 @@ Decision:
 2. Shell execution 可以存在于 v0，但必须作为 sandboxed tool，默认需要 approval。
 3. V0 tools 默认禁用 network access。`search_stub` 可以在没有真实 network access 时模拟 research outputs。
 4. Failed 或 blocked tool calls 应记录 requested tool id、args reference、actor/agent、risk、policy result、status、error/block reason、timestamps 和任何 partial artifact refs。
+5. 真实 research tasks 中，DeepAgents 可以使用 built-in working-file tools，并在后续使用显式配置的 shell/browser/search backends。Novi 不应在 skill 加外部命令/tool 可以完成工作时重造 PDF parser、search engine、simulator 或 trainer。
 
 ## Agents
 
@@ -67,6 +68,7 @@ Decision:
 2. OpenAI-compatible chat completions 足够支撑第一版 SiliconFlow-compatible path。
 3. Model request boundary 分离 stable `system_prompt.md`、structured `model_messages.jsonl`、human-readable `prompt.md` 和 trace records。
 4. 多轮对话会把最近的 user/assistant turns 作为 chat messages 发送。这符合 stateless chat-completions 的要求，并在 provider 支持时给 cache-friendly requests 提供稳定 prefix。
+5. Provider compatibility 和具体模型有关。用于 DeepAgents tool-heavy workflows 前，模型应先通过 tool-call smoke test。SiliconCloud `MiniMaxAI/MiniMax-M2.5` 已验证可进行 model-side Novi wrapper tool calls；如果模型输出不规范 tool-call messages，应先切换或 normalize provider，而不是视为 Novi Tool Runtime 错误。
 
 Open:
 
@@ -81,12 +83,37 @@ Decision:
 1. DeepAgents 是可选 execution kernel，不是 sessions、runs、tools、memory、artifacts 或 policies 的 source of truth。
 2. DeepAgents tool calls 应进入 Novi Tool Runtime，并带 source attribution 记录。
 3. DeepAgents working files 是 execution working memory；除非 Novi 明确 export，否则不是 artifacts。
+4. DeepAgents working-file export 是当前最快获得有用 research artifacts 的路径，例如 topic briefs、evidence maps、experiment plans、iteration logs、physical-prior candidates 和 proposals。
+5. Shell、SSH、simulation 和 training execution 应尽量通过 skills 和已配置 DeepAgents/backend tools 暴露。Novi 记录 commands、logs、outputs 和 artifacts，而不是重造这些系统。
 
 Open:
 
-1. 哪些 DeepAgents built-in tools 应直接启用、包装，或替换为 Novi tools？
+1. 哪些 DeepAgents built-in 高风险 tools 应在 trusted local runs 中直接启用、包装，或替换为 Novi tools？
 2. DeepAgents subagents 应如何映射到 Novi platform agents 或 run participants？
 3. 哪些 LangGraph checkpoint/resume 能力应暴露到 Novi run records？
+
+## Workflows And Self-Modification
+
+Decision:
+
+1. Document merge、research loop、research iteration 和 reflection 都是 workflows，存储在 `.novi/workflows/`。
+2. 不同具体任务可以定义 project-local workflows。
+3. Workflow 和 skill self-modification 只允许通过 reviewable patch contributions。Agent 可以提出 `.novi/workflows/`、`.novi/skills/` 或 `.novi/knowledge/` 的修改；accepted contributions 才应用修改。
+4. Agent 不能在 run 中静默修改已接受 workflow 或 skill files。
+
+Open:
+
+1. 普通 task runs 是否应自动解析 `proposals.json` 并转成 workflow/skill patch contributions，还是在真实使用证明需要前保持显式转换？
+
+## Source And Result Intake
+
+Decision:
+
+1. PDFs、论文、网页、datasets、logs、plots、videos 和 experiment outputs 首先作为 artifacts 进入系统。
+2. PDF/paper parsing 应由 skill/tool 驱动，使用外部命令或库；Novi v0 不应拥有 native parser。
+3. 广泛网页搜索后续可使用 Tavily 或其他 provider；已知 URL 可用 `curl` 或 browser/computer-use skills。
+4. 实验结果先用轻量 Markdown result packets，包含 optional frontmatter、linked artifacts、observations、interpretation 和 next action。
+5. Physical-prior candidates 可以先保留在 `physical-priors.md` 和 `proposals.md` 中，直到多轮运行证明需要 structured prior contributions。
 
 ## Memory
 

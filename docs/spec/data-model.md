@@ -204,6 +204,93 @@ failed
 cancelled
 ```
 
+Task-backed runs may include:
+
+- `task_id`
+- `workflow_id`
+- `workflow_step_id`
+- `workflow_step_title`
+- `workflow_step_kind`
+
+These fields tie a run to a workflow-backed task without making the workflow engine the source of truth for run records.
+
+## WorkflowSpec
+
+Decision:
+
+Project-local workflows are stored as YAML under `.novi/workflows/`.
+
+Required:
+
+- `id`
+- `version`
+- `status`
+- `title`
+- `steps`
+
+Optional:
+
+- `description`
+- `inputs`
+- `default_agents`
+- `success_signals`
+
+Workflow step fields:
+
+- `id`
+- `title`
+- `kind`
+- `actor`
+- `agent_ref`
+- `skill_refs`
+- `inputs`
+- `outputs`
+- `instructions`
+- `condition`
+- `required`
+- `review_required`
+
+V0 workflow examples:
+
+```text
+document-merge
+research-loop
+research-iteration
+reflection-loop
+```
+
+Workflow evolution rule: workflows may be modified by accepted patch contributions, including agent-proposed patches, but agents must not silently overwrite active workflow files.
+
+## TaskSpec
+
+Decision:
+
+Workflow-backed tasks are stored under `.novi/tasks/<task_id>/`.
+
+Required:
+
+- `id`
+- `objective`
+- `workflow_id`
+- `status`
+- `created_at`
+- `updated_at`
+
+Optional:
+
+- `session_id`
+- `run_ids`
+- `current_run_id`
+- `workflow_state`
+- `summary_path`
+
+`workflow_state` should record at least:
+
+- `workflow_id`
+- `current_step_id`
+- `completed_step_ids`
+- `iteration`
+
 ## AgentSpec
 
 Decision:
@@ -441,6 +528,36 @@ Optional:
 
 Hash rule: artifacts written or copied by Novi should include a content hash. Referenced external artifacts may omit hashes until fetched or captured.
 
+Source and result artifacts should stay flexible. PDFs, papers, web pages, datasets, plots, videos, logs, configs, scripts, and result packets can all be artifacts. Prefer preserving the original file plus generated extraction or analysis artifacts instead of forcing them into a heavy schema.
+
+## ResultPacket
+
+Decision:
+
+Experiment results enter the system as lightweight Markdown packets, not rigid database rows.
+
+Suggested optional frontmatter:
+
+```yaml
+type: experiment_result
+title:
+status:
+topic:
+artifacts:
+tags:
+```
+
+Recommended body sections:
+
+```text
+What Was Tried
+Observations
+Interpretation
+Next Action
+```
+
+The packet may link raw data, plots, videos, logs, configs, or scripts by artifact path. LLM workflows can extract claims, observations, interpretations, and prior updates from natural language during the next run.
+
 ## MemoryCandidate
 
 Decision:
@@ -484,6 +601,31 @@ procedural
 ```
 
 V0 rule: memory candidates are accepted or rejected by the local user through CLI. Auditor output may produce recommendations, but it must not directly commit long-term memory.
+
+Physical-prior candidates may begin as Markdown artifacts such as `physical-priors.md`. They do not need a separate structured record until repeated real tasks show that Markdown review is insufficient.
+
+## ContributionRecord
+
+Decision:
+
+Reviewable changes are represented as contributions.
+
+Initial contribution types:
+
+```text
+knowledge_import
+document_patch
+```
+
+`document_patch` can target:
+
+```text
+.novi/knowledge/
+.novi/workflows/
+.novi/skills/
+```
+
+This target scope is the initial workflow/skill self-modification boundary. Agent-proposed workflow or skill changes must become pending contributions, pass checks/review, and only then be applied.
 
 ## EventRecord
 
@@ -617,7 +759,15 @@ project-root/
       procedural.jsonl
       episodic.jsonl
       candidates/
+    workflows/
+      research-loop.yaml
+      research-iteration.yaml
+      document-merge.yaml
+    skills/
+    tasks/
     artifacts/
+      imports/
+    contributions/
     approvals/
 ```
 

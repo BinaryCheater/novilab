@@ -58,6 +58,7 @@ from .workflows import (
     initial_workflow_state,
     list_workflows,
     load_workflow,
+    workflow_round_size,
     workflow_step_instruction,
 )
 
@@ -370,6 +371,8 @@ def cmd_task(args):
     root = Path.cwd()
     if args.steps < 1:
         raise RuntimeError("--steps must be 1 or greater.")
+    if args.rounds is not None and args.rounds < 1:
+        raise RuntimeError("--rounds must be 1 or greater.")
     if args.task_args and args.task_args[0] == "list":
         table = Table(title="Tasks")
         table.add_column("Task ID", no_wrap=True)
@@ -409,8 +412,10 @@ def cmd_task(args):
             ids = ", ".join(item["id"] for item in pending)
             raise RuntimeError(f"Task {task['id']} has pending review contribution(s): {ids}. Run `novi review --task {task['id']} --check` and `novi accept all --task {task['id']}` first.")
         session = load_session(root, task["session_id"]) if task.get("session_id") else active_session(root)
+        workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
+        step_count = args.rounds * workflow_round_size(workflow) if args.rounds is not None else args.steps
         runs = []
-        for _ in range(args.steps):
+        for _ in range(step_count):
             pending = _pending_contributions(root, task_id=task["id"])
             if pending:
                 ids = ", ".join(item["id"] for item in pending)
@@ -419,6 +424,8 @@ def cmd_task(args):
             runs.append(run)
             task = load_task(root, task["id"])
         print(f"Continued task: {task['id']}")
+        if args.rounds is not None:
+            print(f"Task rounds: {args.rounds}")
         if len(runs) == 1:
             print(f"Task run: {runs[0]['id']}")
         else:
@@ -452,13 +459,16 @@ def cmd_task(args):
     print(f"Task ID: {task['id']}")
     print(f"Workflow: {task['workflow_id']}")
     append_session_message(root, session["id"], "user", objective)
+    step_count = args.rounds * workflow_round_size(workflow) if args.rounds is not None else args.steps
     runs = []
-    for _ in range(args.steps):
+    for _ in range(step_count):
         run = _run_task_step(root, task, session, args)
         runs.append(run)
         task = load_task(root, task["id"])
     body = _response_body(require_workspace(root) / "runs" / runs[-1]["id"])
     append_session_message(root, session["id"], "assistant", body, run_id=runs[-1]["id"])
+    if args.rounds is not None:
+        print(f"Task rounds: {args.rounds}")
     if len(runs) == 1:
         print(f"Task run: {runs[0]['id']}")
     else:
@@ -1238,6 +1248,7 @@ def build_parser():
     task_parser.add_argument("--agent", action="append", default=[])
     task_parser.add_argument("--kernel", choices=["simple", "deepagents"], default="deepagents")
     task_parser.add_argument("--steps", type=int, default=1)
+    task_parser.add_argument("--rounds", type=int)
     task_parser.set_defaults(func=cmd_task)
 
     trace_parser = subparsers.add_parser("trace")

@@ -30,6 +30,12 @@ You are executing inside Novi Lab, a local-first, skill-first control plane.
 ## Durable Outputs
 
 - For research or reflection work, produce concrete Markdown working files when possible.
+- Prefer `topic-brief.md` for topic scope, known facts, unknowns, and evidence needs.
+- Prefer `evidence-map.md` for claims, evidence, assumptions, mechanisms, uncertainty, and falsification notes.
+- Prefer `hypotheses.md` for ranked hypotheses and expected observations.
+- Prefer `experiment-plan.md` for the next minimal experiment, variables, controls, measurements, and stop criteria.
+- Prefer `iteration-log.md` for the trial record template and interpretation notes.
+- Prefer `physical-priors.md` for reviewable physical prior candidates with evidence, boundaries, counterexamples, confidence, and next validation.
 - Prefer `research-note.md` for findings, synthesis, assumptions, and uncertainty.
 - Prefer `next-actions.md` for concrete follow-up steps and open questions.
 - Prefer `proposals.md` for proposed knowledge, skill, or workflow changes that need review.
@@ -38,6 +44,15 @@ You are executing inside Novi Lab, a local-first, skill-first control plane.
 
 def _by_id(items):
     return {item["id"]: item for item in items}
+
+
+def _merged_refs(*ref_lists):
+    refs = []
+    for ref_list in ref_lists:
+        for ref in ref_list or []:
+            if ref not in refs:
+                refs.append(ref)
+    return refs
 
 
 def _part_record(path, content):
@@ -97,9 +112,10 @@ def build_prompt_parts(root, run_record, context_pack):
     )
 
     skill_lines = ["# Skills", ""]
-    for skill_ref in primary_agent.get("skill_refs", []) or run_record.get("skill_refs", []):
+    for skill_ref in _merged_refs(primary_agent.get("skill_refs", []), run_record.get("skill_refs", [])):
         skill = skills.get(skill_ref, {"description": ""})
-        skill_lines.extend([f"## Skill: {skill_ref}", "", skill.get("description", ""), ""])
+        skill_text = skill.get("body") or skill.get("description", "")
+        skill_lines.extend([f"## Skill: {skill_ref}", "", skill_text, ""])
 
     tool_lines = [
         "# Tools",

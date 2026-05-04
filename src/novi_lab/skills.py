@@ -6,6 +6,91 @@ from .store import novi_dir
 
 
 DEFAULT_PROJECT_SKILLS = {
+    "topic.research": """---
+name: topic.research
+description: Frame a research topic into evidence needs, hypotheses, and concrete next actions.
+---
+
+# Topic Research
+
+Use the topic, accepted knowledge, imported documents, prior runs, and available tools to
+produce an actionable research frame.
+
+Prefer writing `/topic-brief.md` with:
+
+- topic definition and scope;
+- current known facts;
+- important unknowns;
+- testable hypotheses;
+- evidence needed next;
+- links to run, artifact, or source identifiers when Novi provides them.
+
+Do not claim durable knowledge directly. Put proposed knowledge, skill, or workflow changes
+in `/proposals.md` for review.
+""",
+    "document.evidence": """---
+name: document.evidence
+description: Extract topic-relevant claims, evidence, assumptions, mechanisms, and uncertainty from documents or notes.
+---
+
+# Document Evidence
+
+Treat documents, notes, and experiment logs as evidence sources. Prefer writing
+`/evidence-map.md` with rows or bullets for:
+
+- claim;
+- evidence or observation;
+- source reference supplied by Novi;
+- assumption;
+- mechanism;
+- uncertainty;
+- relevance to the active topic;
+- what would falsify or weaken the claim.
+
+Keep summaries short. Optimize for reusable evidence and traceable uncertainty.
+""",
+    "experiment.iterate": """---
+name: experiment.iterate
+description: Turn current evidence and hypotheses into the next minimal experiment iteration.
+---
+
+# Experiment Iterate
+
+Design the next useful experiment iteration from the topic, evidence map, hypotheses,
+and prior run outputs.
+
+Prefer writing:
+
+- `/hypotheses.md` for ranked hypotheses and expected observations;
+- `/experiment-plan.md` for the smallest next experiment, variables, controls, measurements, and stop criteria;
+- `/iteration-log.md` for the proposed trial record template and how results should be interpreted.
+
+Assume real hardware or simulation tools may be unavailable unless Novi explicitly exposes
+them. In that case, propose the next test and observation schema rather than pretending it ran.
+""",
+    "physics.prior.extract": """---
+name: physics.prior.extract
+description: Extract reviewable implicit physical prior candidates from documents, experiments, and failures.
+---
+
+# Physics Prior Extract
+
+Identify implicit physical priors that emerged from documents, experiment plans,
+observations, failures, or repeated reasoning patterns.
+
+Prefer writing `/physical-priors.md`. Each prior candidate should include:
+
+- prior statement;
+- physical mechanism or intuition;
+- supporting evidence with Novi source references;
+- applicability boundary;
+- counterexample or failure mode;
+- confidence;
+- next validation step;
+- whether it should become accepted knowledge, stay tentative, or drive another experiment.
+
+Do not write durable memory directly. Put reviewable changes in `/proposals.md`.
+""",
     "document.curate": """---
 name: document.curate
 description: Analyze imported documents into reviewable analysis notes with source links and merge guidance.
@@ -66,6 +151,7 @@ def _skill_from_file(path, source):
         "id": skill_id,
         "name": metadata.get("name", skill_id),
         "description": description,
+        "body": body.strip(),
         "path": str(Path(path)),
         "source": source,
     }

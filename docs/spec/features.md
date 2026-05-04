@@ -28,9 +28,11 @@ This table summarizes Novi's feature surface. It does not define final priority 
 | Project participants | Next | Support multiple human participants in one project | Identity, role, permission, ownership, audit attribution | local identity, GitHub/GitLab later, SSO later | Defer full team model; keep v0 actor fields future-compatible |
 | Cowork assignments | Next | Assign scoped work to a human participant or worker | Assignment, context scope, output, comments, review | CLI/TUI/Web, Codex, Claude Code, OpenHands, GitHub/GitLab later | Defer until after the local core loop |
 | Simple kernel | Early | Validate core loop without external agent framework | Deterministic execution/test harness | local code | Avoid early DeepAgents lock-in |
-| DeepAgents/LangGraph kernel | Early/Next | Support API-backed complex research and long tasks | Kernel adapter, tool wrapping, event bridge | DeepAgents, LangGraph | Optional Phase 1 prototype exists; next work is streaming/checkpoints/builtin tool mapping |
-| Research/search | Early | Retrieve sources and external information | Search, fetch, source artifacts | `search_stub` first; Tavily/Brave/SearXNG/httpx later | Provider replaceable |
-| Deep research | Early/Next | Multi-round search, reading, evidence table, report | Research run workflow, evidence artifacts | DeepAgents/LangGraph, search, browser, PDF parser | Hosted provider allowed only as adapter |
+| DeepAgents/LangGraph kernel | Early/Next | Support API-backed complex research and long tasks | Kernel adapter, Novi wrapper tools, DeepAgents working-file artifact export, event bridge | DeepAgents, LangGraph | Tool-using SiliconCloud run verified with `MiniMaxAI/MiniMax-M2.5`; next work is streaming/checkpoints and controlled shell/backend mapping |
+| Research iteration workflow | Early | Turn a topic or loose materials into hypotheses, experiment plans, and physical-prior candidates | Workflow steps, skills, prompt protocol, artifact export, review boundary | DeepAgents, OpenAI-compatible provider | Phase 1.5 working loop; not the only future research workflow |
+| Research/search | Early | Retrieve sources and external information | Search, fetch, source artifacts | `search_stub` first; Tavily/Brave/SearXNG/httpx later | Provider replaceable; broad web search is optional for many tasks |
+| Source/result intake | Early | Bring PDFs, papers, web pages, logs, datasets, plots, videos, and experiment results into research context | Preserve originals, generated extraction artifacts, lightweight result packets | Skills, external commands, DeepAgents backend tools, curl/Tavily/browser later | Avoid heavy schema until real tasks prove the need |
+| Deep research | Early/Next | Multi-round search, reading, evidence table, report | Research run workflow, evidence artifacts | DeepAgents/LangGraph, search, browser, PDF parser/tools | Hosted provider allowed only as adapter |
 | CLI control plane | Early | Inspect and control Novi | init/configure/ask/run/output/trace/inspect/approve/review | Typer, Rich, prompt-toolkit | First control surface; raw JSONL should not be required for normal use |
 | Memory review | Early/Next | Make long-term knowledge evidence-based | Candidates, review, commit boundary | Markdown/JSONL, SQLite, vector later | Internal design discussed separately |
 | Coding worker | Next | Let external coding agents produce patches/tests | Create coding run, limit scope, capture diffs/logs | Codex, Claude Code, OpenHands | Usually expressed through skills plus worker adapter |
@@ -83,3 +85,14 @@ V0 rule:
 
 - keep `actor`, `owner`, `reviewed_by`, and approval attribution fields future-compatible;
 - do not implement full project participants, cowork assignments, comments, notifications, or team permissions in Phase 1.
+
+## Workflow Evolution Notes
+
+Different concrete tasks may define their own project-local workflows under `.novi/workflows/`.
+
+Workflow and skill self-improvement should use the existing reviewable contribution path:
+
+- agent proposes a patch for `.novi/workflows/`, `.novi/skills/`, or `.novi/knowledge/`;
+- Novi records the proposed change as a contribution;
+- review/check/accept applies it;
+- active workflows are not silently overwritten by an agent.

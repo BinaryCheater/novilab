@@ -138,7 +138,7 @@ Build check:
 - [ ] Tool routing can express allowlist/expose_to semantics while still requiring each external tool to be represented as a Novi ToolSpec with risk, policy, and artifact behavior.
 - [ ] A layered Markdown knowledge vault can be referenced or initialized, with raw inputs/excerpts, analysis notes, accepted conclusions, indexes, and syntheses treated as distinct layers.
 - [ ] Agent/session mid-term memory can be stored as file-backed execution memory without becoming accepted project knowledge.
-- [ ] A generated workflow can be saved as a `WorkflowSpec`-like record with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers.
+- [x] Project-local workflows can be saved as `WorkflowSpec`-like YAML records with steps, success signals, agent assignments, required artifacts, tool requirements, and iteration triggers. Further automatic workflow drafting remains incremental.
 - [ ] Agent-generated workflow, prompt, skill, document, or memory changes are saved as patches or contributions, not silent edits.
 - [ ] A user can import project knowledge, notes, paper snippets, prior experiment logs, links, or direct agent-session exports as artifacts and contributions.
 - [ ] Imported knowledge can be processed by a scoped agent into analysis notes and one or more patch proposals against the document library, workflow records, or project-local skills. A user-provided target is a hard constraint, not the default path.
@@ -154,7 +154,7 @@ Acceptance check:
 - [ ] One run can involve at least one user-level/collaborator agent and one reviewer/auditor or executor agent with different scopes.
 - [ ] One imported raw input or link can be preserved as a source artifact and used to produce an analysis note or claim candidate.
 - [ ] One imported document can be processed into an analysis note and at least one reviewable document patch selected by the agent or constrained by the user, then accepted or rejected.
-- [ ] One workflow can be drafted, executed at a shallow level, reflected on, and patched.
+- [x] One workflow can be defined and executed at a shallow level; reflection and patching use the reviewable contribution path, while fully automatic proposal extraction remains incremental.
 - [ ] One workflow patch, memory/knowledge contribution, or prompt/skill suggestion can be accepted or rejected through review.
 - [ ] One evidence-backed conclusion or procedure can be written to, or proposed for, a layered Markdown knowledge vault without bypassing review.
 - [ ] One session can use file-backed mid-term memory to manage context without treating it as accepted project knowledge.
@@ -419,5 +419,5 @@ Open:
 4. Should coding worker be the first real worker adapter, or should human review/approval come first?
 5. What order should simulation, training, dataset, evaluation, and ROS take within Physical-AI?
 6. How broad should Phase 1.5 be before it becomes overdesign rather than integrated exploration?
-7. Which new records from `exploration.md` should become durable data model objects first: `AgentProfile`, `WorkflowSpec`, `WorkflowPatch`, `Contribution`, `KnowledgeImport`, `ClaimCandidate`, or stronger `MemoryRecord`?
+7. Which remaining records from `exploration.md` should become durable data model objects next, now that AgentProfile-like records, WorkflowSpec-like records, TaskSpec-like records, and Contribution records exist in the local prototype?
 8. What is the smallest demonstration that Novi can support scientific self-iteration without silently accepting unreviewed agent output?

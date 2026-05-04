@@ -49,6 +49,7 @@ Decision:
 2. Shell execution can exist in v0 only as a sandboxed tool with approval required by default.
 3. Network access is disabled by default for v0 tools. `search_stub` can simulate research outputs without real network access.
 4. Failed or blocked tool calls record the requested tool id, args reference, actor/agent, risk, policy result, status, error/block reason, timestamps, and any partial artifact refs.
+5. For real research tasks, DeepAgents may use built-in working-file tools and, later, explicitly configured shell/browser/search backends. Novi should not reimplement PDF parsers, search engines, simulators, or trainers when a skill plus external command/tool can do the work.
 
 ## Agents
 
@@ -67,6 +68,7 @@ Decision:
 2. OpenAI-compatible chat completions are enough for the first SiliconFlow-compatible path.
 3. The model request boundary separates stable `system_prompt.md`, structured `model_messages.jsonl`, human-readable `prompt.md`, and trace records.
 4. Recent user/assistant turns are sent as chat messages for multi-round conversation. This follows stateless chat-completions requirements and gives providers a stable prefix for cache-friendly requests where supported.
+5. Provider compatibility is model-specific. A model should pass a tool-call smoke test before being used for DeepAgents tool-heavy workflows. SiliconCloud `MiniMaxAI/MiniMax-M2.5` has been verified for model-side Novi wrapper tool calls; a model that emits non-standard tool-call messages should be switched or normalized rather than treated as a Novi Tool Runtime failure.
 
 Open:
 
@@ -81,12 +83,37 @@ Decision:
 1. DeepAgents is an optional execution kernel, not the source of truth for sessions, runs, tools, memory, artifacts, or policies.
 2. DeepAgents tool calls should enter Novi Tool Runtime and be logged with source attribution.
 3. DeepAgents working files are execution working memory unless Novi explicitly exports them as artifacts.
+4. DeepAgents working-file export is accepted as the fastest path for useful research artifacts such as topic briefs, evidence maps, experiment plans, iteration logs, physical-prior candidates, and proposals.
+5. Shell, SSH, simulation, and training execution should be exposed through skills and configured DeepAgents/backend tools where possible. Novi records commands, logs, outputs, and artifacts rather than rebuilding those systems.
 
 Open:
 
-1. Which DeepAgents built-in tools should be enabled directly, wrapped, or replaced by Novi tools?
+1. Which DeepAgents built-in high-risk tools should be enabled directly for trusted local runs, wrapped, or replaced by Novi tools?
 2. How should DeepAgents subagents map to Novi platform agents or run participants?
 3. Which LangGraph checkpoint/resume features should be surfaced in Novi run records?
+
+## Workflows And Self-Modification
+
+Decision:
+
+1. Document merge, research loop, research iteration, and reflection are all workflows stored under `.novi/workflows/`.
+2. Different concrete tasks may define project-local workflows.
+3. Workflow and skill self-modification is allowed only through reviewable patch contributions. Agents may propose changes to `.novi/workflows/`, `.novi/skills/`, or `.novi/knowledge/`; accepted contributions apply the change.
+4. Agents must not silently modify accepted workflow or skill files during a run.
+
+Open:
+
+1. Should ordinary task runs automatically parse `proposals.json` into workflow/skill patch contributions, or should proposal conversion stay explicit until real usage proves the desired behavior?
+
+## Source And Result Intake
+
+Decision:
+
+1. PDFs, papers, web pages, datasets, logs, plots, videos, and experiment outputs enter first as artifacts.
+2. PDF/paper parsing should be skill/tool driven using external commands or libraries; Novi should not own a native parser in v0.
+3. Broad web search can use Tavily or another provider later; known URLs can be fetched by `curl` or browser/computer-use skills.
+4. Experiment results should begin as lightweight Markdown result packets with optional frontmatter, linked artifacts, observations, interpretation, and next action.
+5. Physical-prior candidates can remain in `physical-priors.md` and `proposals.md` until repeated runs show a need for structured prior contributions.
 
 ## Memory
 

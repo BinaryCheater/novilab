@@ -204,6 +204,93 @@ failed
 cancelled
 ```
 
+由 task 支撑的 run 可以包含：
+
+- `task_id`
+- `workflow_id`
+- `workflow_step_id`
+- `workflow_step_title`
+- `workflow_step_kind`
+
+这些字段把 run 关联到 workflow-backed task，但不让 workflow engine 取代 run record 的 source of truth。
+
+## WorkflowSpec
+
+Decision:
+
+Project-local workflows 以 YAML 存在 `.novi/workflows/`。
+
+必需字段：
+
+- `id`
+- `version`
+- `status`
+- `title`
+- `steps`
+
+可选字段：
+
+- `description`
+- `inputs`
+- `default_agents`
+- `success_signals`
+
+Workflow step 字段：
+
+- `id`
+- `title`
+- `kind`
+- `actor`
+- `agent_ref`
+- `skill_refs`
+- `inputs`
+- `outputs`
+- `instructions`
+- `condition`
+- `required`
+- `review_required`
+
+V0 workflow examples：
+
+```text
+document-merge
+research-loop
+research-iteration
+reflection-loop
+```
+
+Workflow 演化规则：workflow 可以通过 accepted patch contributions 修改，包括 agent-proposed patches；agent 不能静默覆盖 active workflow files。
+
+## TaskSpec
+
+Decision:
+
+Workflow-backed tasks 存在 `.novi/tasks/<task_id>/`。
+
+必需字段：
+
+- `id`
+- `objective`
+- `workflow_id`
+- `status`
+- `created_at`
+- `updated_at`
+
+可选字段：
+
+- `session_id`
+- `run_ids`
+- `current_run_id`
+- `workflow_state`
+- `summary_path`
+
+`workflow_state` 至少应记录：
+
+- `workflow_id`
+- `current_step_id`
+- `completed_step_ids`
+- `iteration`
+
 ## AgentSpec
 
 Proposal:
@@ -441,6 +528,36 @@ Proposal:
 
 Hash rule：Novi 写入或复制的 artifacts 应包含 content hash。引用但尚未 fetch/capture 的外部 artifact 可以暂时没有 hash。
 
+Source 和 result artifacts 应保持灵活。PDF、论文、网页、datasets、plots、videos、logs、configs、scripts 和 result packets 都可以是 artifacts。优先保留原始文件，并附加 generated extraction 或 analysis artifacts，而不是强行塞进重 schema。
+
+## ResultPacket
+
+Decision:
+
+实验结果以轻量 Markdown packets 进入系统，而不是 rigid database rows。
+
+建议可选 frontmatter：
+
+```yaml
+type: experiment_result
+title:
+status:
+topic:
+artifacts:
+tags:
+```
+
+建议正文部分：
+
+```text
+What Was Tried
+Observations
+Interpretation
+Next Action
+```
+
+Packet 可以通过 artifact path 链接 raw data、plots、videos、logs、configs 或 scripts。后续 LLM workflows 可以在下一次 run 中从自然语言抽取 claims、observations、interpretations 和 prior updates。
+
 ## MemoryCandidate
 
 Proposal:
@@ -484,6 +601,31 @@ procedural
 ```
 
 V0 rule：memory candidates 由本地用户通过 CLI accept/reject。Auditor output 可以提出 recommendations，但不能直接 commit long-term memory。
+
+Physical-prior candidates 可以先作为 `physical-priors.md` 这类 Markdown artifacts 存在。只有当多轮真实任务证明 Markdown review 不足时，才需要单独的结构化 record。
+
+## ContributionRecord
+
+Decision:
+
+Reviewable changes 用 contributions 表示。
+
+初始 contribution types：
+
+```text
+knowledge_import
+document_patch
+```
+
+`document_patch` 可指向：
+
+```text
+.novi/knowledge/
+.novi/workflows/
+.novi/skills/
+```
+
+这就是初始 workflow/skill self-modification 边界。Agent-proposed workflow 或 skill changes 必须先变成 pending contributions，通过 checks/review 后才能应用。
 
 ## EventRecord
 
@@ -617,7 +759,15 @@ project-root/
       procedural.jsonl
       episodic.jsonl
       candidates/
+    workflows/
+      research-loop.yaml
+      research-iteration.yaml
+      document-merge.yaml
+    skills/
+    tasks/
     artifacts/
+      imports/
+    contributions/
     approvals/
 ```
 
