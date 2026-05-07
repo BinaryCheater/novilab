@@ -11,6 +11,7 @@ Novi already has a narrow model provider boundary:
 - `.novi/novi.yaml` stores `model.provider`, `model.model`, `model.base_url`, and `model.api_key`.
 - `src/novi_lab/model_providers.py` resolves DeepAgents models.
 - `openai_chat`, `openai_compatible_chat`, and `siliconflow` currently use `langchain_openai.ChatOpenAI` with `use_responses_api=False`.
+- `openai_responses` currently passes a model string through to DeepAgents. Current DeepAgents docs say `openai:` string models are resolved through LangChain `init_chat_model` and use the OpenAI Responses API by default. This means Novi can use Responses through DeepAgents' default string-model path, but Novi does not yet explicitly pass `.novi/novi.yaml` `base_url` and `api_key` into an initialized Responses model object.
 - Run artifacts already record `model_provider`, `model_profile`, `model_base_url`, `model_calls.jsonl`, `model_request.yaml`, `deepagents_messages.jsonl`, and model response artifacts.
 
 LiteLLM is relevant because it can sit between Novi and upstream model providers as:
@@ -27,12 +28,13 @@ Official docs reviewed:
 - LiteLLM supported endpoints: https://docs.litellm.ai/docs/supported_endpoints
 - LiteLLM `/responses`: https://docs.litellm.ai/docs/response_api
 - LiteLLM providers: https://docs.litellm.ai/docs/providers
+- DeepAgents `create_deep_agent` model behavior: https://reference.langchain.com/python/deepagents/graph/create_deep_agent
 
 ## Recommendation
 
-Use a proxy-first integration.
+Use an embedded-proxy-config integration.
 
-Phase 1 should not embed LiteLLM SDK inside Novi. Instead, treat LiteLLM as an external model gateway behind Novi's existing `openai_chat` provider shape:
+Phase 1 should not put LiteLLM SDK calls on Novi's model execution hot path. Instead, Novi should own an inspectable LiteLLM proxy config and either let the user start the proxy manually or start it as an attached child process for the current command. LiteLLM then acts as a local model gateway behind Novi's existing OpenAI-compatible model boundary:
 
 ```yaml
 model:
@@ -42,14 +44,15 @@ model:
   api_key: os.environ/LITELLM_PROXY_API_KEY
 ```
 
-At runtime, `litellm_proxy` should resolve to the same `ChatOpenAI` path as `openai_chat`, with `model_provider` recorded as `litellm_proxy` and `model_base_url` recorded as the local or remote LiteLLM proxy URL.
+At runtime, `litellm_proxy` can use either chat-completions or Responses depending on the selected `api_shape`. `model_provider` should be recorded as `litellm_proxy`, `model_base_url` should be the LiteLLM proxy URL, and `model_api_shape` should be `responses` or `chat_completions`.
 
 This gets Novi:
 
 - one stable service path for multiple upstreams;
 - LiteLLM model aliases and routing config;
 - fallback and provider switching outside Novi's first provider adapter;
-- minimal disruption to DeepAgents and existing model traces.
+- minimal disruption to DeepAgents and existing model traces;
+- a project-local, filesystem-readable gateway config that matches Novi's local-first direction.
 
 It also preserves Novi's core boundary: LiteLLM routes model calls, but Novi still owns sessions, runs, tools, artifacts, memory, policy, and audit.
 
@@ -93,14 +96,15 @@ uv run --extra deepagents novi run start research "Use the search stub once, the
 
 Expected result: Novi sees LiteLLM as an OpenAI-compatible chat provider. Tool calls still flow through Novi ToolRuntime.
 
-### Phase B: First-class `litellm-proxy` provider
+### Phase B: Embedded LiteLLM proxy config
 
-Purpose: make the supported path explicit without adding LiteLLM as an in-process dependency.
+Purpose: make LiteLLM a first-class local gateway without replacing Novi's model/run ledger.
 
 Files to modify:
 
 - `src/novi_lab/cli.py`
 - `src/novi_lab/model_providers.py`
+- `src/novi_lab/litellm_proxy.py`
 - `docs/guide/configuration.md`
 - `docs/guide/yaml-config.md`
 - `tests/test_cli_core_loop.py`
@@ -109,18 +113,44 @@ Behavior:
 
 - Add `novi configure model litellm-proxy --model <alias> --base-url <url> --api-key <key>`.
 - Default `base_url` to `http://localhost:4000/v1` if omitted.
-- Resolve `litellm_proxy` through `ChatOpenAI(..., use_responses_api=False)`.
+- Add a project-local LiteLLM config at `.novi/litellm/config.yaml`.
+- Add a command to initialize or update the config, for example:
+
+```bash
+novi litellm init \
+  --model-name research-primary \
+  --upstream-model openai/gpt-4.1-mini \
+  --upstream-api-key-env OPENAI_API_KEY
+```
+
+- Add a manual start command printout:
+
+```bash
+uv run --extra litellm litellm --config .novi/litellm/config.yaml --port 4000
+```
+
+- Add an attached start path, scoped to the current command or explicit foreground process:
+
+```bash
+novi litellm start --port 4000
+```
+
+- Keep daemon/process supervision minimal: no background service manager in this version.
+- Resolve `litellm_proxy` through an explicit API-shape choice:
+  - `api_shape: responses`: initialize an OpenAI-compatible model with `use_responses_api=True` against the LiteLLM proxy.
+  - `api_shape: chat_completions`: initialize `ChatOpenAI(..., use_responses_api=False)` against the LiteLLM proxy.
 - Preserve `model_provider: litellm_proxy` in trace records instead of collapsing it to `openai_chat`.
+- Preserve `model_api_shape` in trace records.
 - Update `doctor model` to print provider/base URL/key status without exposing secrets.
 - Add tests for CLI config, provider resolution, and trace record output.
 
-Implementation note: keep `openai_chat` behavior unchanged. `litellm_proxy` is an alias-plus-trace distinction, not a separate model execution stack.
+Implementation note: keep `openai_chat` behavior unchanged. `litellm_proxy` is an alias-plus-trace distinction plus project-local LiteLLM config ownership, not a replacement for Novi's execution stack.
 
-### Phase C: LiteLLM config helper
+### Phase C: LiteLLM config details
 
 Purpose: make local-first setup inspectable.
 
-Add a command or documented template for a LiteLLM proxy config file, probably under `docs/guide/` first:
+Generate this project-local file:
 
 ```yaml
 model_list:
@@ -140,20 +170,29 @@ general_settings:
   master_key: os.environ/LITELLM_PROXY_API_KEY
 ```
 
-Do not store provider API keys in Novi project YAML. Prefer environment references in LiteLLM config and only store the LiteLLM proxy key in Novi during the prototype.
+Do not store upstream provider API keys in Novi project YAML. Prefer environment references in LiteLLM config and only store the LiteLLM proxy key in Novi during the prototype.
 
-### Phase D: Responses API spike
+### Phase D: Responses path hardening
 
-Purpose: decide whether Novi should expose `openai_responses` through LiteLLM.
+Purpose: make Responses explicit and auditable rather than relying only on DeepAgents string-model defaults.
 
-Questions to test:
+Current understanding:
 
-- Can the current DeepAgents/LangChain path use `ChatOpenAI(use_responses_api=True)` against LiteLLM proxy reliably?
-- Does LiteLLM `/responses` preserve tool-call semantics that DeepAgents/LangChain can parse?
-- When LiteLLM bridges `/responses` to `/chat/completions`, are response items, reasoning traces, and tool messages still auditable enough for Novi?
-- Does provider-specific state leak into LiteLLM rather than Novi run records?
+- DeepAgents supports Responses by default for `openai:` model strings.
+- Novi's `openai_responses` path does not fall back to compatible chat; it delegates model resolution to DeepAgents.
+- Novi does not yet explicitly construct a Responses model with project-local `base_url` and `api_key`.
 
-Recommendation: keep `openai_responses` reserved until a smoke matrix passes. Novi's current model-message archive is chat-shaped, and the run ledger should not pretend to have Responses semantics until request/response records are explicit.
+Required work:
+
+- Add tests that `openai_responses` does not resolve through the compatible-chat `use_responses_api=False` path.
+- Add a project-configured Responses path that passes `base_url`, `api_key`, and `use_responses_api=True` explicitly when needed.
+- Add `model_api_shape: responses` to request and call records.
+- Smoke test tool calling through:
+  - direct OpenAI Responses;
+  - LiteLLM proxy `/responses`;
+  - LiteLLM bridge from `/responses` to `/chat/completions` where upstream lacks Responses.
+
+Recommendation: prefer Responses for OpenAI-native models and for LiteLLM aliases that pass the smoke test. Use chat-completions only for compatible providers/models that do not support Responses or whose Responses tool-call behavior fails.
 
 ### Phase E: Optional Python SDK / Router integration
 
@@ -175,7 +214,7 @@ Recommendation: defer until proxy-first proves insufficient.
 
 2. Chat vs Responses semantics
 
-   Novi currently archives `model_messages.jsonl` and DeepAgents messages in a chat-style shape. `/responses` adds a different event/item model. Supporting it properly may require a new `model_exchange.jsonl` schema rather than overloading chat message records.
+   Novi currently archives `model_messages.jsonl` and DeepAgents messages in a chat-style shape. DeepAgents can use Responses underneath for `openai:` models, but Novi should record the selected API shape explicitly. If richer Responses items become important for audit, add `model_exchange.jsonl` rather than overloading chat message records.
 
 3. Trace fidelity through a gateway
 
@@ -187,7 +226,7 @@ Recommendation: defer until proxy-first proves insufficient.
 
 5. Service lifecycle
 
-   A proxy introduces a separate process. For v0, Novi should document how to run it rather than silently managing a daemon. Later, a `novi doctor model --ping` check can detect proxy availability.
+   A proxy introduces a separate process. For this version, Novi can support both manual startup and an attached foreground child process. It should not silently install a background daemon. Later, a `novi doctor model --ping` check can detect proxy availability.
 
 6. Routing and fallback audit
 
@@ -204,11 +243,15 @@ Recommendation: defer until proxy-first proves insufficient.
 ## Minimal Implementation Checklist
 
 - [ ] Add tests for `litellm-proxy` CLI config writing `.novi/novi.yaml`.
+- [ ] Add tests for `.novi/litellm/config.yaml` generation.
+- [ ] Add tests for `novi litellm start` command construction without launching a real long-running proxy.
 - [ ] Add tests for `doctor model` output with `litellm_proxy`.
-- [ ] Add tests that `resolve_deepagents_model` maps `litellm_proxy` to `ChatOpenAI` with base URL and API key.
-- [ ] Add tests that model trace records preserve `model_provider: litellm_proxy`.
+- [ ] Add tests that `resolve_deepagents_model` maps `litellm_proxy` to the selected API shape with base URL and API key.
+- [ ] Add tests that model trace records preserve `model_provider: litellm_proxy` and `model_api_shape`.
+- [ ] Add tests that `openai_responses` does not fall back to `use_responses_api=False`.
 - [ ] Implement provider parsing in `src/novi_lab/cli.py`.
 - [ ] Implement provider resolution in `src/novi_lab/model_providers.py`.
+- [ ] Implement LiteLLM config generation and start command support.
 - [ ] Update configuration guide and YAML guide.
 - [ ] Run `uv run --extra dev pytest`.
 - [ ] Manually smoke test against a LiteLLM proxy before calling the integration complete.
@@ -217,6 +260,6 @@ Recommendation: defer until proxy-first proves insufficient.
 
 - Should Novi use LiteLLM proxy only, or also embed LiteLLM SDK later?
 - Should `litellm_proxy` default to `http://localhost:4000/v1`?
-- Should `.novi/novi.yaml` store LiteLLM alias only, or also a local copy of upstream alias metadata for audit?
-- Should `openai_responses` remain reserved until DeepAgents proves compatible with LiteLLM `/responses`?
+- Should `.novi/novi.yaml` store LiteLLM alias only, with upstream alias metadata kept in `.novi/litellm/config.yaml`?
+- Should `responses` be the default `api_shape` for `litellm_proxy`, with chat-completions as an explicit compatibility mode?
 - Should Novi add a `doctor model --ping` network check, or keep `doctor model` non-network for now?
