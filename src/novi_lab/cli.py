@@ -61,6 +61,7 @@ from .workflows import (
     initial_workflow_state,
     list_workflows,
     load_workflow,
+    workflow_step_by_id,
     workflow_round_size,
     workflow_step_instruction,
 )
@@ -342,6 +343,41 @@ def _prepare_task_step(root, task):
     return workflow, state, step, workflow_step_instruction(workflow, task, step)
 
 
+def _print_step_contract(step):
+    if step.get("required_tools"):
+        print(f"Required tools: {', '.join(step.get('required_tools', []))}")
+    if step.get("expected_files"):
+        print(f"Expected files: {', '.join(step.get('expected_files', []))}")
+    if step.get("expected_artifacts"):
+        print(f"Expected artifacts: {', '.join(step.get('expected_artifacts', []))}")
+    if step.get("continue_from"):
+        print(f"Continue from: {', '.join(step.get('continue_from', []))}")
+
+
+def _artifact_types_for_run(root, run_id):
+    run_dir = _run_dir(root, run_id)
+    return {read_yaml(path, {}).get("type") for path in sorted((run_dir / "artifacts").glob("*.yaml"))}
+
+
+def _print_expected_status(root, step, run_id=None):
+    if not step:
+        return
+    expected_files = step.get("expected_files", [])
+    expected_artifacts = step.get("expected_artifacts", [])
+    if not expected_files and not expected_artifacts:
+        return
+    print("Expected outputs:")
+    workspace = Path(root).resolve()
+    for raw_path in expected_files:
+        path = (workspace / raw_path).resolve()
+        status = "ok" if str(path).startswith(str(workspace)) and path.is_file() else "missing"
+        print(f"- file {status}: {raw_path}")
+    artifact_types = _artifact_types_for_run(root, run_id) if run_id else set()
+    for artifact_type in expected_artifacts:
+        status = "ok" if artifact_type in artifact_types else "missing"
+        print(f"- artifact {status}: {artifact_type}")
+
+
 def _finish_task_step(root, task, workflow, step, run):
     state = advance_workflow_state(workflow, task.get("workflow_state"), step["id"])
     task["workflow_state"] = state
@@ -355,6 +391,7 @@ def _run_task_step(root, task, session, args):
     workflow, _state, step, instruction = _prepare_task_step(root, task)
     agents = [load_agent(root, agent_id) for agent_id in args.agent]
     print(f"Workflow step: {step['id']} - {step.get('title', step['id'])}")
+    _print_step_contract(step)
     run = start_deterministic_run(
         root,
         session,
@@ -403,6 +440,14 @@ def cmd_task(args):
         state = task.get("workflow_state") or {}
         print(f"Current step: {state.get('current_step_id') or '-'}")
         print(f"Completed steps: {', '.join(state.get('completed_step_ids', [])) or '-'}")
+        try:
+            workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
+            step = current_workflow_step(workflow, state)
+            if step:
+                _print_step_contract(step)
+                _print_expected_status(root, step, run_id=task.get("current_run_id"))
+        except RuntimeError:
+            pass
         print("Runs:")
         for run_id in task.get("run_ids", []):
             print(f"- {run_id}")
@@ -756,9 +801,21 @@ def cmd_run_check(args):
     run_dir = _run_dir(root, run_id)
     if not (run_dir / "run.yaml").exists():
         raise RuntimeError(f"Run not found: {run_id}")
+    run = load_run(root, run_id)
     failed = False
+    require_files = list(args.require_file)
+    require_artifacts = list(args.require_artifact)
+    if args.from_workflow:
+        workflow_id = run.get("workflow_id")
+        step_id = run.get("workflow_step_id")
+        if workflow_id and step_id:
+            workflow = load_workflow(root, workflow_id)
+            step = workflow_step_by_id(workflow, step_id)
+            if step:
+                require_files.extend(step.get("expected_files", []))
+                require_artifacts.extend(step.get("expected_artifacts", []))
     workspace = Path(root).resolve()
-    for raw_path in args.require_file:
+    for raw_path in dict.fromkeys(require_files):
         path = (workspace / raw_path).resolve()
         if str(path).startswith(str(workspace)) and path.is_file():
             print(f"file ok: {raw_path}")
@@ -767,7 +824,7 @@ def cmd_run_check(args):
             failed = True
     artifact_records = [read_yaml(path, {}) for path in sorted((run_dir / "artifacts").glob("*.yaml"))]
     artifact_types = {record.get("type") for record in artifact_records}
-    for artifact_type in args.require_artifact:
+    for artifact_type in dict.fromkeys(require_artifacts):
         if artifact_type in artifact_types:
             print(f"artifact ok: {artifact_type}")
         else:
@@ -1573,6 +1630,7 @@ def build_parser():
     run_check.add_argument("run_id")
     run_check.add_argument("--require-file", action="append", default=[])
     run_check.add_argument("--require-artifact", action="append", default=[])
+    run_check.add_argument("--from-workflow", action="store_true")
     run_check.set_defaults(func=cmd_run_check)
 
     memory_parser = subparsers.add_parser("memory")

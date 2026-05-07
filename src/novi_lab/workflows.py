@@ -164,6 +164,83 @@ def default_workflows():
             ],
         },
         {
+            "id": "analysis-loop",
+            "version": 1,
+            "status": "active",
+            "title": "Analysis Loop",
+            "description": "Analyze materials, map evidence, produce conclusions, and identify next checks.",
+            "inputs": {"required": ["objective"], "optional": ["source_files", "accepted_knowledge", "prior_task_runs"]},
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {
+                    "id": "analyze",
+                    "title": "Analyze evidence and uncertainty",
+                    "kind": "produce_artifact",
+                    "actor": "agent",
+                    "agent_ref": "agent_orchestrator",
+                    "skill_refs": ["document.evidence", "research.review"],
+                    "required_tools": ["filesystem.read", "filesystem.list"],
+                    "expected_files": ["evidence-map.md", "research-note.md", "next-actions.md"],
+                    "continue_from": ["prior_task_runs", "accepted_knowledge"],
+                    "instructions": "Read the available material, separate evidence from inference, write an evidence map, concise analysis note, and next actions.",
+                    "required": True,
+                }
+            ],
+            "success_signals": ["evidence_map_created", "analysis_note_created", "next_actions_created"],
+        },
+        {
+            "id": "experiment-loop",
+            "version": 1,
+            "status": "active",
+            "title": "Experiment Loop",
+            "description": "Read an experiment brief, run or prepare the smallest useful command, analyze outputs, and propose the next iteration.",
+            "inputs": {"required": ["objective"], "optional": ["experiment_dir", "prior_task_runs", "accepted_knowledge"]},
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {
+                    "id": "run_or_plan",
+                    "title": "Run or plan experiment",
+                    "kind": "agent_run",
+                    "actor": "agent",
+                    "agent_ref": "agent_orchestrator",
+                    "skill_refs": ["experiment.iterate", "document.evidence"],
+                    "required_tools": ["filesystem.read", "filesystem.write", "filesystem.list", "shell.run", "artifact.save"],
+                    "expected_files": ["metrics.md", "notes.md", "next-actions.md"],
+                    "expected_artifacts": ["shell_output"],
+                    "continue_from": ["prior_task_runs", "latest_outputs"],
+                    "instructions": "Inspect the experiment instructions, run the smallest safe command when available, preserve command output, summarize metrics and notes, and write next-actions.md.",
+                    "required": True,
+                }
+            ],
+            "success_signals": ["command_output_archived", "metrics_created", "next_actions_created"],
+        },
+        {
+            "id": "improvement-loop",
+            "version": 1,
+            "status": "active",
+            "title": "Improvement Loop",
+            "description": "Inspect prior failure or weak output, make a narrow improvement, verify it, and summarize the delta.",
+            "inputs": {"required": ["objective"], "optional": ["prior_task_runs", "target_files", "accepted_knowledge"]},
+            "default_agents": {"orchestrator": "agent_orchestrator", "reviewer": "agent_auditor"},
+            "steps": [
+                {
+                    "id": "improve",
+                    "title": "Improve and verify",
+                    "kind": "agent_run",
+                    "actor": "agent",
+                    "agent_ref": "agent_orchestrator",
+                    "skill_refs": ["research.review"],
+                    "required_tools": ["filesystem.read", "filesystem.write", "filesystem.list", "shell.run", "git.status"],
+                    "expected_files": ["improvement-summary.md", "next-actions.md"],
+                    "expected_artifacts": ["shell_output"],
+                    "continue_from": ["prior_task_runs", "latest_outputs"],
+                    "instructions": "Use prior outputs to identify one narrow improvement, make or propose it, run a verification command when possible, and summarize the delta and next action.",
+                    "required": True,
+                }
+            ],
+            "success_signals": ["improvement_summary_created", "verification_output_archived"],
+        },
+        {
             "id": "reflection-loop",
             "version": 1,
             "status": "active",
@@ -337,6 +414,14 @@ def workflow_step_instruction(workflow, task, step):
     ]
     if step.get("skill_refs"):
         lines.extend(["", f"Step skill refs: {', '.join(step.get('skill_refs', []))}"])
+    if step.get("required_tools"):
+        lines.extend(["", f"Required tools: {', '.join(step.get('required_tools', []))}"])
+    if step.get("expected_files"):
+        lines.extend(["", "Expected files:", *[f"- {path}" for path in step.get("expected_files", [])]])
+    if step.get("expected_artifacts"):
+        lines.extend(["", "Expected artifacts:", *[f"- {artifact_type}" for artifact_type in step.get("expected_artifacts", [])]])
+    if step.get("continue_from"):
+        lines.extend(["", f"Continue from: {', '.join(step.get('continue_from', []))}"])
     if step.get("instructions"):
         lines.extend(["", "Step instructions:", step["instructions"]])
     lines.extend(

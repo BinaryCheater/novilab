@@ -135,6 +135,26 @@ def test_init_creates_research_iteration_workflow(tmp_path):
     assert "physical-priors.md" in workflow_text
 
 
+def test_init_creates_thin_loop_workflow_templates(tmp_path):
+    result = run_cli(tmp_path, "init")
+
+    assert result.returncode == 0, result.stderr
+    workflow_dir = tmp_path / ".novi" / "workflows"
+    analysis_text = (workflow_dir / "analysis-loop.yaml").read_text(encoding="utf-8")
+    experiment_text = (workflow_dir / "experiment-loop.yaml").read_text(encoding="utf-8")
+    improvement_text = (workflow_dir / "improvement-loop.yaml").read_text(encoding="utf-8")
+
+    assert "id: analysis-loop" in analysis_text
+    assert "expected_files:" in analysis_text
+    assert "evidence-map.md" in analysis_text
+    assert "id: experiment-loop" in experiment_text
+    assert "required_tools:" in experiment_text
+    assert "shell.run" in experiment_text
+    assert "metrics.md" in experiment_text
+    assert "id: improvement-loop" in improvement_text
+    assert "continue_from:" in improvement_text
+
+
 def test_agent_create_list_and_show(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -348,6 +368,70 @@ def test_run_check_requires_workspace_files_and_artifact_types(tmp_path):
     assert "artifact ok: research_note" in ok.stdout
     assert missing.returncode == 1
     assert "artifact missing: missing_type" in missing.stdout
+
+
+def test_task_output_and_inspect_show_workflow_step_contract(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run the smoke experiment",
+        "--workflow",
+        "experiment-loop",
+        "--kernel",
+        "simple",
+        "--steps",
+        "1",
+    )
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert result.returncode == 0, result.stderr
+    assert "Required tools:" in result.stdout
+    assert "shell.run" in result.stdout
+    assert "Expected files:" in result.stdout
+    assert "metrics.md" in result.stdout
+    assert inspect.returncode == 0, inspect.stderr
+    assert "Expected outputs:" in inspect.stdout
+    assert "file missing: metrics.md" in inspect.stdout
+    assert "artifact missing: shell_output" in inspect.stdout
+
+
+def test_run_check_from_workflow_uses_step_expected_outputs(tmp_path):
+    run_cli(tmp_path, "init")
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run the smoke experiment",
+        "--workflow",
+        "experiment-loop",
+        "--kernel",
+        "simple",
+        "--steps",
+        "1",
+    )
+    run_id = parse_labeled_id(result.stdout, "Task run:", "run_")
+
+    missing = run_cli(tmp_path, "run", "check", run_id, "--from-workflow")
+    (tmp_path / "metrics.md").write_text("# Metrics\n", encoding="utf-8")
+    ok = run_cli(
+        tmp_path,
+        "run",
+        "check",
+        run_id,
+        "--from-workflow",
+        "--require-artifact",
+        "research_note",
+    )
+
+    assert missing.returncode == 1
+    assert "file missing: metrics.md" in missing.stdout
+    assert "artifact missing: shell_output" in missing.stdout
+    assert ok.returncode == 1
+    assert "file ok: metrics.md" in ok.stdout
+    assert "artifact ok: research_note" in ok.stdout
+    assert "artifact missing: shell_output" in ok.stdout
 
 
 def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
