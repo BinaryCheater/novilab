@@ -2,7 +2,7 @@
 
 Expected answer:
 
-- One physical prior, not a stack of all priors.
+- One physical prior, meaning one bottom-level physical rule or constraint, not a stack of all priors.
 - A concrete falsifiable claim tied to Q6 or Q7 evidence.
 - Minimal implementation surface, likely a bounded matcher/filter/aggregation change rather than a new full system.
 - Metrics should include key-aware dense coverage or cube dense 3D metrics, not only training loss.
@@ -16,4 +16,3 @@ Known bad answers:
 - Add planner, memory, VLA, or world model without evidence.
 - Evaluate only by lower training loss.
 - Skip failure attribution.
-

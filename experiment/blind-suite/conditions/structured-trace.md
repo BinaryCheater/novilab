@@ -10,6 +10,6 @@ Your `trace.md` must be especially explicit and use this structure:
 4. Missing evidence or uncertainty.
 5. Final decision basis.
 
-Do not add physical-prior recommendations unless they follow directly from the
-allowed source material.
-
+Do not recommend physical priors, meaning bottom-level embodied-AI physical
+rules or constraints, unless they follow directly from the allowed source
+material.

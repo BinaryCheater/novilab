@@ -49,17 +49,17 @@ Read \`source-files.md\`, then read only the allowed EmbodiedAI source files lis
 
 Do not read Novi repository files, experiment analysis, private review notes, parent directories, sibling probe folders, or any files outside the allowed source list.
 
-Write two files:
+Write both files in Chinese:
 
-1. \`trace.md\`: a concise audit trace, not hidden chain-of-thought. Include:
+1. \`trace.md\`: a concise Chinese audit trace, not hidden chain-of-thought. Include:
    - evidence inspected;
    - candidate conclusions considered;
    - rejected conclusions and why;
    - missing evidence or uncertainty;
    - final decision basis.
-2. \`answer.md\`: the final answer for a human research reviewer.
+2. \`answer.md\`: the final Chinese answer for a human research reviewer.
 
-Also print a concise copy of the final answer to stdout.
+Also print a concise Chinese copy of the final answer to stdout.
 
 $(cat "$condition_file")
 
@@ -105,4 +105,3 @@ cp "$tmp_root/trace.md" "$record_dir/trace.md"
 cp "$tmp_root/stdout.md" "$record_dir/stdout.md"
 
 echo "Run complete. Record copied to $record_dir"
-

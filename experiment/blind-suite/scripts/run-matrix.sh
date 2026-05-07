@@ -28,7 +28,7 @@ probes=(
 
 conditions=(
   naive
-  physical-prior
+  research-discipline
   structured-trace
 )
 
@@ -42,4 +42,3 @@ for probe in "${probes[@]}"; do
 done
 
 echo "Matrix complete: $repo_root/experiment/blind-suite/runs/$BLIND_SUITE_RUN_ID"
-

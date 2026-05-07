@@ -33,8 +33,8 @@ set unless the probe is explicitly about synthesizing those summaries.
 | Condition | Purpose |
 | --- | --- |
 | `naive` | Task-only baseline. |
-| `physical-prior` | Adds physical-prior research discipline without giving answers. |
-| `structured-trace` | Adds a fixed audit-trace format without physical-prior hints. |
+| `research-discipline` | Adds research discipline without giving answers. |
+| `structured-trace` | Adds a fixed audit-trace format without method hints. |
 
 ## Probe Order
 
@@ -61,7 +61,7 @@ Run Claude Code:
 
 ```bash
 experiment/blind-suite/scripts/run-one.sh q5-dense-verdict naive
-experiment/blind-suite/scripts/run-one.sh q5-dense-verdict physical-prior
+experiment/blind-suite/scripts/run-one.sh q5-dense-verdict research-discipline
 experiment/blind-suite/scripts/run-one.sh q5-dense-verdict structured-trace
 ```
 
@@ -92,6 +92,9 @@ The record contains:
 - `trace.md`
 - `stdout.md`
 - `metadata.md`
+
+`answer.md`, `trace.md`, and the concise stdout answer are requested in Chinese
+so the records are easy to review.
 
 ## Review
 
