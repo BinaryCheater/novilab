@@ -36,7 +36,7 @@ Treat the EmbodiedAI repository as read-only unless the user explicitly asks to 
 - `runs/`: raw run records from Codex, Claude Code, and Novi workflow probes.
 - `analysis/`: cross-run analysis, prompt/skill deltas, and product gaps.
 - `templates/`: run and analysis templates.
-- `workspaces.md`: isolated worktree layout and first-test instructions.
+- `claude-code-tests/`: clean Claude Code test folders containing only public task instructions and output templates.
 
 ## Current Experiment Stance
 

@@ -24,18 +24,16 @@ This is a product and method calibration exercise:
 
 ## Comparison Conditions
 
-Run each selected probe under a small number of controlled conditions:
+Run each selected probe under a small number of controlled Claude Code conditions first:
 
 | ID | Condition | Purpose |
 | --- | --- | --- |
 | A | Claude Code naive | Establish raw baseline behavior. |
 | B | Claude Code with physical-prior prompt | Test whether a better prompt is already enough. |
-| C | Claude Code with draft skill/SOP | Test reusable research-method injection. |
-| D | Codex naive | Compare Codex default behavior on the same probe. |
-| E | Codex with physical-prior prompt | Compare prompt sensitivity. |
-| F | Novi workflow probe | Test whether external staged records and gates add value. |
+| C | Claude Code with draft skill/SOP | Test reusable research-method injection after A/B are understood. |
+| D | Novi workflow probe | Test whether external staged records and gates add value after Claude Code behavior is understood. |
 
-For the first pass, conditions A, B, D, and E are enough. Add C and F after the probe format stabilizes.
+For the first pass, run only A and B. Codex is not part of the current comparison.
 
 ## Probe Set
 
@@ -62,12 +60,13 @@ Human reviewers should score or annotate:
 
 ## First Batch Procedure
 
-1. Select one probe file from `probes/`.
-2. Run the same probe in each selected condition.
-3. Save raw outputs under `runs/YYYY-MM-DD/<probe-id>/<condition-id>.md`.
-4. Fill a run record using `templates/run-record.md`.
-5. Summarize differences in `analysis/YYYY-MM-DD-<probe-id>.md`.
-6. Update prompt and skill notes only after the batch is complete.
+1. Select one clean test folder under `claude-code-tests/`.
+2. Start Claude Code from that folder, not from the repository root.
+3. Paste the folder's `prompt-to-paste.md`.
+4. Let Claude save its result to the local `answer.md`.
+5. Copy the completed answer into `runs/YYYY-MM-DD/<probe-id>/<condition-id>.md` if you want a central record.
+6. Summarize differences in `analysis/YYYY-MM-DD-<probe-id>.md`.
+7. Update prompt and skill notes only after the batch is complete.
 
 ## Expected Learning
 
@@ -82,4 +81,3 @@ The first useful outcome is a map of agent failure patterns:
 - ignoring active observability and uncertainty.
 
 These patterns should drive prompt, skill, workflow, and Novi product changes.
-
