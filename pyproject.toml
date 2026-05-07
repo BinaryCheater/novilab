@@ -16,6 +16,7 @@ deepagents = [
     "langchain-openai>=0.3",
     "socksio>=1.0",
 ]
+litellm = ["litellm>=1.0"]
 
 [project.scripts]
 novi = "novi_lab.cli:main"
