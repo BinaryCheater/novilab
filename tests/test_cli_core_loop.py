@@ -200,6 +200,79 @@ def test_tool_list_and_show_builtin_tool(tmp_path):
     assert "Policy: allowed" in show_result.stdout
 
 
+def test_init_exposes_atomic_tools_to_default_orchestrator(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "agent", "show", "agent_orchestrator")
+
+    assert result.returncode == 0, result.stderr
+    assert "filesystem.read" in result.stdout
+    assert "filesystem.write" in result.stdout
+    assert "filesystem.list" in result.stdout
+    assert "shell.run" in result.stdout
+    assert "web.fetch" in result.stdout
+    assert "artifact.save" in result.stdout
+
+
+def test_atomic_tools_write_list_shell_and_save_artifacts(tmp_path):
+    run_cli(tmp_path, "init")
+
+    write_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.write",
+        "--arg",
+        "path=notes/result.md",
+        "--arg",
+        "content=useful result",
+    )
+    list_result = run_cli(tmp_path, "tool", "call", "filesystem.list", "--arg", "path=notes")
+    shell_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "shell.run",
+        "--arg",
+        "command=printf shell-output",
+    )
+    artifact_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "artifact.save",
+        "--arg",
+        "path=notes/result.md",
+        "--arg",
+        "artifact_type=research_note",
+    )
+
+    assert write_result.returncode == 0, write_result.stderr
+    assert (tmp_path / "notes" / "result.md").read_text(encoding="utf-8") == "useful result"
+    assert list_result.returncode == 0, list_result.stderr
+    assert "result.md" in list_result.stdout
+    assert shell_result.returncode == 0, shell_result.stderr
+    assert "shell-output" in shell_result.stdout
+    assert artifact_result.returncode == 0, artifact_result.stderr
+    artifact_id = parse_id(artifact_result.stdout, "art_")
+    assert (tmp_path / ".novi" / "artifacts" / f"{artifact_id}.yaml").exists()
+
+
+def test_watch_latest_shows_run_progress_surface(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "monitoring")
+    run_result = run_cli(tmp_path, "run", "start", "research", "observe this run")
+
+    watch_result = run_cli(tmp_path, "watch", "latest")
+
+    run_id = parse_id(run_result.stdout, "run_")
+    assert watch_result.returncode == 0, watch_result.stderr
+    assert f"Run: {run_id}" in watch_result.stdout
+    assert "Events:" in watch_result.stdout
+    assert "Tool calls:" in watch_result.stdout
+    assert "Artifacts:" in watch_result.stdout
+
+
 def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -2286,7 +2359,10 @@ def test_run_archives_compiled_kernel_bindings(tmp_path):
     assert '"agent_id": "agent_orchestrator"' in binding_text
     assert '"authority_level": "collaborator"' in binding_text
     assert '"kernel": "simple"' in binding_text
-    assert '"tool_names": ["search_stub_query"]' in binding_text
+    assert '"search_stub_query"' in binding_text
+    assert '"filesystem_write"' in binding_text
+    assert '"shell_run"' in binding_text
+    assert '"artifact_save"' in binding_text
     assert "Kernel bindings:" in inspect_result.stdout
     assert "agent_orchestrator simple" in inspect_result.stdout
     assert "Kernel bindings:" in trace_result.stdout

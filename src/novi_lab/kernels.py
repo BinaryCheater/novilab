@@ -82,6 +82,41 @@ def _tool_wrapper(root, run_dir, run_id, participant, tool_id):
 
         return filesystem_read
 
+    if tool_id == "filesystem.write":
+        def filesystem_write(path: str = "", content: str = "") -> str:
+            """Write a UTF-8 text file inside the Novi workspace through ToolRuntime."""
+            return record_call({"path": path, "content": content})
+
+        return filesystem_write
+
+    if tool_id == "filesystem.list":
+        def filesystem_list(path: str = ".") -> str:
+            """List files and directories inside the Novi workspace through ToolRuntime."""
+            return record_call({"path": path})
+
+        return filesystem_list
+
+    if tool_id == "shell.run":
+        def shell_run(command: str = "", cwd: str = ".", timeout: int = 60) -> str:
+            """Run a shell command from the Novi workspace and capture stdout/stderr."""
+            return record_call({"command": command, "cwd": cwd, "timeout": timeout})
+
+        return shell_run
+
+    if tool_id == "web.fetch":
+        def web_fetch(url: str = "", timeout: int = 30) -> str:
+            """Fetch a URL and capture the response body as a Novi artifact."""
+            return record_call({"url": url, "timeout": timeout})
+
+        return web_fetch
+
+    if tool_id == "artifact.save":
+        def artifact_save(path: str = "", artifact_type: str = "saved_file") -> str:
+            """Copy a workspace file into the Novi artifact store."""
+            return record_call({"path": path, "artifact_type": artifact_type})
+
+        return artifact_save
+
     if tool_id == "git.status":
         def git_status() -> str:
             """Read git status for the Novi workspace through ToolRuntime."""

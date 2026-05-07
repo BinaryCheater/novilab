@@ -238,13 +238,14 @@ def _parse_arg_values(values):
 
 
 def cmd_tool_call(args):
-    agent = load_agent(Path.cwd(), args.agent_id)
+    agent = load_agent(Path.cwd(), args.agent_id or "agent_orchestrator")
     participant = {
         "agent_id": agent["id"],
         "tool_scope": list(agent.get("tool_scope", [])),
     }
     call = execute_tool(Path.cwd(), "manual", participant, args.tool_id, _parse_arg_values(args.arg))
     print(f"{call['tool_id']} {call['status']} {call.get('block_reason') or call.get('risk', '-')}")
+    print(f"agent: {agent['id']}")
     if call.get("result_ref"):
         for key, value in call["result_ref"].items():
             print(f"{key}: {value}")
@@ -623,6 +624,54 @@ def cmd_run_trace(args):
         print("- none")
     for binding in bindings:
         print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
+    return 0
+
+
+def cmd_watch(args):
+    root = Path.cwd()
+    run_id = _run_id_arg(root, args.run_id)
+    run = load_run(root, run_id)
+    if not run:
+        raise RuntimeError(f"Run not found: {run_id}")
+    run_dir = _run_dir(root, run_id)
+    print(f"Run: {run_id}")
+    print(f"Status: {run.get('status', '-')}")
+    if run.get("workflow_id"):
+        print(f"Workflow: {run.get('workflow_id')} / {run.get('workflow_step_id') or '-'}")
+    print(f"Objective: {run.get('objective', '-')}")
+    print("")
+    print("Events:")
+    events = read_jsonl(run_dir / "events.jsonl")
+    if not events:
+        print("- none")
+    for event in events[-12:]:
+        print(f"- {event.get('created_at', '-')} {event.get('type', '-')}: {event.get('summary') or event.get('message') or '-'}")
+    print("")
+    print("Model calls:")
+    model_calls = read_jsonl(run_dir / "model_calls.jsonl")
+    if not model_calls:
+        print("- none")
+    for call in model_calls[-5:]:
+        print(f"- {call.get('status', '-')} {call.get('kernel', '-')} {call.get('model_provider', '-')}/{call.get('model_profile', '-')}")
+        if call.get("error"):
+            print(f"  error: {call['error']}")
+    print("")
+    print("Tool calls:")
+    tool_calls = read_jsonl(run_dir / "tool_calls.jsonl")
+    if not tool_calls:
+        print("- none")
+    for call in tool_calls[-10:]:
+        result = call.get("result_ref", {}) or {}
+        detail = result.get("returncode", result.get("path", call.get("block_reason", "")))
+        print(f"- {call.get('tool_id')} {call.get('status')} {detail}")
+    print("")
+    print("Artifacts:")
+    artifact_paths = sorted((run_dir / "artifacts").glob("*.yaml"))
+    if not artifact_paths:
+        print("- none")
+    for artifact_path in artifact_paths[-12:]:
+        artifact = read_yaml(artifact_path, {})
+        print(f"- {artifact.get('id')} {artifact.get('type', '-')} {artifact.get('path', '-')}")
     return 0
 
 
@@ -1211,6 +1260,10 @@ def build_parser():
     ps_parser = subparsers.add_parser("ps")
     ps_parser.set_defaults(func=cmd_ps)
 
+    watch_parser = subparsers.add_parser("watch")
+    watch_parser.add_argument("run_id", nargs="?", default="latest")
+    watch_parser.set_defaults(func=cmd_watch)
+
     import_parser = subparsers.add_parser("import")
     import_parser.add_argument("source")
     import_parser.set_defaults(func=cmd_import)
@@ -1367,7 +1420,7 @@ def build_parser():
     tool_expose.set_defaults(func=cmd_tool_expose)
     tool_call = tool_sub.add_parser("call")
     tool_call.add_argument("tool_id")
-    tool_call.add_argument("--agent", dest="agent_id", required=True)
+    tool_call.add_argument("--agent", dest="agent_id")
     tool_call.add_argument("--arg", action="append", default=[])
     tool_call.set_defaults(func=cmd_tool_call)
 
