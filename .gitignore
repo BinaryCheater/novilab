@@ -12,6 +12,7 @@ Thumbs.db
 
 # Runtime and generated project state
 .novi/
+.worktrees/
 artifacts/
 runs/
 sessions/
