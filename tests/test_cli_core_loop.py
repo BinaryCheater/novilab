@@ -398,6 +398,49 @@ def test_task_output_and_inspect_show_workflow_step_contract(tmp_path):
     assert "artifact missing: shell_output" in inspect.stdout
 
 
+def test_task_note_and_amend_are_injected_into_next_run_prompt(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Initial experiment goal", "--workflow", "experiment-loop", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+
+    note = run_cli(tmp_path, "task", "note", task_id, "人工观察：优先检查 Q6 failure attribution。")
+    amend = run_cli(tmp_path, "task", "amend", task_id, "Updated goal: run the smallest Q6 diagnostic.")
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--workflow", "experiment-loop", "--kernel", "simple")
+    run_id = parse_labeled_id(continued.stdout, "Task run:", "run_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    prompt = run_cli(tmp_path, "run", "prompt", run_id)
+
+    assert note.returncode == 0, note.stderr
+    assert amend.returncode == 0, amend.stderr
+    assert "Task note:" in note.stdout
+    assert "Task amended:" in amend.stdout
+    assert "Updated goal: run the smallest Q6 diagnostic." in inspect.stdout
+    assert "Human guidance:" in inspect.stdout
+    assert "优先检查 Q6 failure attribution" in inspect.stdout
+    assert "Updated goal: run the smallest Q6 diagnostic." in prompt.stdout
+    assert "人工观察：优先检查 Q6 failure attribution。" in prompt.stdout
+
+
+def test_task_pause_blocks_continue_until_resume(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Pauseable task", "--workflow", "analysis-loop", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+
+    paused = run_cli(tmp_path, "task", "pause", task_id)
+    blocked = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    resumed = run_cli(tmp_path, "task", "resume", task_id)
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+
+    assert paused.returncode == 0, paused.stderr
+    assert "Task paused:" in paused.stdout
+    assert blocked.returncode == 1
+    assert "is paused" in blocked.stderr
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Task resumed:" in resumed.stdout
+    assert continued.returncode == 0, continued.stderr
+    assert "Continued task:" in continued.stdout
+
+
 def test_run_check_from_workflow_uses_step_expected_outputs(tmp_path):
     run_cli(tmp_path, "init")
     result = run_cli(

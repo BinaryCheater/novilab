@@ -22,6 +22,7 @@ from .processing import process_imported_document, process_imported_documents
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
+    append_jsonl,
     accepted_knowledge,
     agent_review_contribution,
     apply_patch_contribution,
@@ -52,6 +53,7 @@ from .store import (
     request_changes_contribution,
     require_workspace,
     save_task,
+    utc_now,
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
@@ -378,6 +380,38 @@ def _print_expected_status(root, step, run_id=None):
         print(f"- artifact {status}: {artifact_type}")
 
 
+def _task_guidance_path(root, task_id):
+    return require_workspace(root) / "tasks" / task_id / "guidance.jsonl"
+
+
+def _append_task_guidance(root, task, kind, text):
+    record = {
+        "id": f"{kind}_{utc_now().replace('-', '').replace(':', '').replace('.', '_')}",
+        "type": kind,
+        "text": text,
+        "created_at": utc_now(),
+        "actor": "local_user",
+    }
+    guidance = list(task.get("human_guidance", []))
+    guidance.append(record)
+    task["human_guidance"] = guidance
+    if kind == "amendment":
+        task["objective"] = text
+    save_task(root, task)
+    append_jsonl(_task_guidance_path(root, task["id"]), record)
+    return record
+
+
+def _print_human_guidance(task):
+    guidance = list(task.get("human_guidance", []))
+    if not guidance:
+        return
+    print("Human guidance:")
+    for item in guidance[-8:]:
+        label = "amendment" if item.get("type") == "amendment" else "note"
+        print(f"- {label}: {item.get('text', '')}")
+
+
 def _finish_task_step(root, task, workflow, step, run):
     state = advance_workflow_state(workflow, task.get("workflow_state"), step["id"])
     task["workflow_state"] = state
@@ -440,6 +474,7 @@ def cmd_task(args):
         state = task.get("workflow_state") or {}
         print(f"Current step: {state.get('current_step_id') or '-'}")
         print(f"Completed steps: {', '.join(state.get('completed_step_ids', [])) or '-'}")
+        _print_human_guidance(task)
         try:
             workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
             step = current_workflow_step(workflow, state)
@@ -452,10 +487,44 @@ def cmd_task(args):
         for run_id in task.get("run_ids", []):
             print(f"- {run_id}")
         return 0
+    if args.task_args and args.task_args[0] == "note":
+        if len(args.task_args) < 3:
+            raise RuntimeError("Usage: novi task note <task_id> <text>")
+        task = load_task(root, args.task_args[1])
+        record = _append_task_guidance(root, task, "note", " ".join(args.task_args[2:]).strip())
+        print(f"Task note: {task['id']}")
+        print(record["text"])
+        return 0
+    if args.task_args and args.task_args[0] == "amend":
+        if len(args.task_args) < 3:
+            raise RuntimeError("Usage: novi task amend <task_id> <objective>")
+        task = load_task(root, args.task_args[1])
+        record = _append_task_guidance(root, task, "amendment", " ".join(args.task_args[2:]).strip())
+        print(f"Task amended: {task['id']}")
+        print(record["text"])
+        return 0
+    if args.task_args and args.task_args[0] == "pause":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task pause <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "paused"
+        save_task(root, task)
+        print(f"Task paused: {task['id']}")
+        return 0
+    if args.task_args and args.task_args[0] == "resume":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task resume <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "active"
+        save_task(root, task)
+        print(f"Task resumed: {task['id']}")
+        return 0
     if args.task_args and args.task_args[0] in {"continue", "run"}:
         if len(args.task_args) < 2:
             raise RuntimeError("Usage: novi task continue <task_id>")
         task = load_task(root, args.task_args[1])
+        if task.get("status") == "paused":
+            raise RuntimeError(f"Task {task['id']} is paused. Run `novi task resume {task['id']}` before continuing.")
         pending = _pending_contributions(root, task_id=task["id"])
         if pending:
             ids = ", ".join(item["id"] for item in pending)

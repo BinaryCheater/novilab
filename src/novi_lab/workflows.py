@@ -390,6 +390,7 @@ def workflow_step_instruction(workflow, task, step):
     title = step.get("title") or step.get("id")
     kind = step.get("kind", "-")
     actor = step.get("actor", "-")
+    guidance = list(task.get("human_guidance", []))
     lines = [
         task.get("objective", ""),
         "",
@@ -412,6 +413,11 @@ def workflow_step_instruction(workflow, task, step):
         "- next-actions.md for concrete follow-up steps and open questions",
         "- proposals.md for proposed knowledge, skill, or workflow changes that need review",
     ]
+    if guidance:
+        lines.extend(["", "Human guidance:"])
+        for item in guidance[-12:]:
+            label = "Amendment" if item.get("type") == "amendment" else "Note"
+            lines.append(f"- {label} ({item.get('created_at', '-')}): {item.get('text', '')}")
     if step.get("skill_refs"):
         lines.extend(["", f"Step skill refs: {', '.join(step.get('skill_refs', []))}"])
     if step.get("required_tools"):
