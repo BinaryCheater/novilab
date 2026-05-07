@@ -36,8 +36,8 @@ Treat the EmbodiedAI repository as read-only unless the user explicitly asks to 
 - `runs/`: raw run records from Codex, Claude Code, and Novi workflow probes.
 - `analysis/`: cross-run analysis, prompt/skill deltas, and product gaps.
 - `templates/`: run and analysis templates.
+- `workspaces.md`: isolated worktree layout and first-test instructions.
 
 ## Current Experiment Stance
 
 Use small, repeatable probes rather than a large harness. Human review is the evaluator in this phase. Automatic scoring can come later only after the useful judgment dimensions are clear.
-
