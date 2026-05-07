@@ -273,6 +273,83 @@ def test_watch_latest_shows_run_progress_surface(tmp_path):
     assert "Artifacts:" in watch_result.stdout
 
 
+def test_watch_follow_exits_for_completed_run(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "monitoring")
+    run_result = run_cli(tmp_path, "run", "start", "research", "observe this run")
+
+    watch_result = run_cli(tmp_path, "watch", "latest", "--follow", "--interval", "0")
+
+    run_id = parse_id(run_result.stdout, "run_")
+    assert watch_result.returncode == 0, watch_result.stderr
+    assert f"Run: {run_id}" in watch_result.stdout
+    assert "Status: completed" in watch_result.stdout
+
+
+def test_shell_run_allow_failure_keeps_failed_experiment_auditable(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "shell.run",
+        "--arg",
+        "command=printf fail-output && exit 7",
+        "--arg",
+        "allow_failure=true",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "shell.run success execute_local" in result.stdout
+    assert "returncode: 7" in result.stdout
+    assert "fail-output" in result.stdout
+    artifact_id = parse_id(result.stdout, "art_")
+    assert (tmp_path / ".novi" / "artifacts" / f"{artifact_id}.yaml").exists()
+
+
+def test_experiment_init_creates_minimal_runnable_template_at_explicit_path(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "experiment", "init", "scratch-exp/contact-prior-smoke")
+
+    experiment_dir = tmp_path / "scratch-exp" / "contact-prior-smoke"
+    assert result.returncode == 0, result.stderr
+    assert (experiment_dir / "README.md").exists()
+    assert (experiment_dir / "run.sh").exists()
+    assert (experiment_dir / "outputs").is_dir()
+    assert (experiment_dir / "metrics.md").exists()
+    assert (experiment_dir / "notes.md").exists()
+    assert "Experiment: scratch-exp/contact-prior-smoke" in result.stdout
+
+
+def test_run_check_requires_workspace_files_and_artifact_types(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "checks")
+    run_result = run_cli(tmp_path, "run", "start", "research", "check artifacts")
+    run_id = parse_id(run_result.stdout, "run_")
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "outputs" / "metrics.md").write_text("# Metrics\n", encoding="utf-8")
+
+    ok = run_cli(
+        tmp_path,
+        "run",
+        "check",
+        run_id,
+        "--require-file",
+        "outputs/metrics.md",
+        "--require-artifact",
+        "research_note",
+    )
+    missing = run_cli(tmp_path, "run", "check", run_id, "--require-artifact", "missing_type")
+
+    assert ok.returncode == 0, ok.stderr
+    assert "file ok: outputs/metrics.md" in ok.stdout
+    assert "artifact ok: research_note" in ok.stdout
+    assert missing.returncode == 1
+    assert "artifact missing: missing_type" in missing.stdout
+
+
 def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
     run_cli(tmp_path, "init")
 

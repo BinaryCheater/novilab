@@ -51,7 +51,7 @@ def builtin_tools():
             "description": "Run a shell command from the Novi workspace and capture stdout/stderr.",
             "risk": "execute_local",
             "policy": "allowed",
-            "input_schema": {"command": "string", "cwd": "string", "timeout": "integer"},
+            "input_schema": {"command": "string", "cwd": "string", "timeout": "integer", "allow_failure": "boolean"},
             "output_artifacts": ["shell_output"],
             "expose_to": ["agent_orchestrator"],
         },
@@ -147,6 +147,10 @@ def _workspace_path(root, raw_path, *, must_exist=False):
 def _truncate(text, limit=4000):
     text = text or ""
     return text[:limit], len(text) > limit
+
+
+def _truthy(value):
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _run_artifact_dir(root, run_id):
@@ -373,6 +377,7 @@ def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
             return call
         command = args.get("command", "")
         timeout = int(args.get("timeout") or 60)
+        allow_failure = _truthy(args.get("allow_failure", False))
         try:
             result = subprocess.run(
                 command,
@@ -392,13 +397,14 @@ def execute_tool(root, run_id, agent, tool_id, args, source="manual"):
             )
             stdout, stdout_truncated = _truncate(result.stdout)
             stderr, stderr_truncated = _truncate(result.stderr)
-            call["status"] = "success" if result.returncode == 0 else "error"
+            call["status"] = "success" if result.returncode == 0 or allow_failure else "error"
             call["policy_result"] = "allowed"
             call["artifact_ids"] = [artifact["id"]]
             call["result_ref"] = {
                 "command": command,
                 "cwd": str(cwd.relative_to(Path(root).resolve())),
                 "returncode": result.returncode,
+                "allow_failure": allow_failure,
                 "stdout": stdout,
                 "stderr": stderr,
                 "stdout_truncated": stdout_truncated,

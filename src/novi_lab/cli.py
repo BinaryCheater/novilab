@@ -2,6 +2,7 @@ import argparse
 import os
 import shlex
 import sys
+import time
 from pathlib import Path
 
 from rich.console import Console
@@ -627,9 +628,7 @@ def cmd_run_trace(args):
     return 0
 
 
-def cmd_watch(args):
-    root = Path.cwd()
-    run_id = _run_id_arg(root, args.run_id)
+def _print_watch_snapshot(root, run_id):
     run = load_run(root, run_id)
     if not run:
         raise RuntimeError(f"Run not found: {run_id}")
@@ -672,7 +671,109 @@ def cmd_watch(args):
     for artifact_path in artifact_paths[-12:]:
         artifact = read_yaml(artifact_path, {})
         print(f"- {artifact.get('id')} {artifact.get('type', '-')} {artifact.get('path', '-')}")
+    return run
+
+
+def cmd_watch(args):
+    root = Path.cwd()
+    run_id = _run_id_arg(root, args.run_id)
+    while True:
+        run = _print_watch_snapshot(root, run_id)
+        if not args.follow or run.get("status") in {"completed", "failed", "error", "blocked"}:
+            return 0
+        time.sleep(max(args.interval, 0))
+
+
+def _workspace_relative_path(root, raw_path):
+    if not raw_path:
+        raise RuntimeError("Path is required.")
+    path = Path(raw_path)
+    if path.parts and path.parts[0] in {"experiment", "experiments"}:
+        raise RuntimeError("Refusing to create Novi templates under experiment/ or experiments/. Pass an explicit scratch path outside those folders.")
+    workspace = Path(root).resolve()
+    requested = path.resolve() if path.is_absolute() else (workspace / path).resolve()
+    if not str(requested).startswith(str(workspace)):
+        raise RuntimeError("Path must be inside the current workspace.")
+    return requested, str(requested.relative_to(workspace))
+
+
+def cmd_experiment_init(args):
+    root = Path.cwd()
+    require_workspace(root)
+    path, relative = _workspace_relative_path(root, args.path)
+    path.mkdir(parents=True, exist_ok=True)
+    outputs_dir = path / "outputs"
+    outputs_dir.mkdir(exist_ok=True)
+    readme = path / "README.md"
+    run_sh = path / "run.sh"
+    metrics = path / "metrics.md"
+    notes = path / "notes.md"
+    if not readme.exists():
+        readme.write_text(
+            "\n".join(
+                [
+                    f"# {Path(relative).name}",
+                    "",
+                    "## Purpose",
+                    "",
+                    "State the question this experiment answers.",
+                    "",
+                    "## Run",
+                    "",
+                    "```bash",
+                    "./run.sh",
+                    "```",
+                    "",
+                    "## Expected Outputs",
+                    "",
+                    "- `outputs/` contains raw or derived result files.",
+                    "- `metrics.md` summarizes metrics, failures, and next checks.",
+                    "- `notes.md` records interpretation and follow-up questions.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    if not run_sh.exists():
+        run_sh.write_text(
+            "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p outputs\nprintf '# Metrics\\n\\n- status: draft\\n' > metrics.md\nprintf '# Notes\\n\\n- observation: fill me in\\n' > notes.md\n",
+            encoding="utf-8",
+        )
+        run_sh.chmod(0o755)
+    if not metrics.exists():
+        metrics.write_text("# Metrics\n\n- status: draft\n", encoding="utf-8")
+    if not notes.exists():
+        notes.write_text("# Notes\n\n- observation: draft\n", encoding="utf-8")
+    print(f"Experiment: {relative}")
+    print(f"Run: {relative}/run.sh")
+    print(f"Outputs: {relative}/outputs")
     return 0
+
+
+def cmd_run_check(args):
+    root = Path.cwd()
+    run_id = _run_id_arg(root, args.run_id)
+    run_dir = _run_dir(root, run_id)
+    if not (run_dir / "run.yaml").exists():
+        raise RuntimeError(f"Run not found: {run_id}")
+    failed = False
+    workspace = Path(root).resolve()
+    for raw_path in args.require_file:
+        path = (workspace / raw_path).resolve()
+        if str(path).startswith(str(workspace)) and path.is_file():
+            print(f"file ok: {raw_path}")
+        else:
+            print(f"file missing: {raw_path}")
+            failed = True
+    artifact_records = [read_yaml(path, {}) for path in sorted((run_dir / "artifacts").glob("*.yaml"))]
+    artifact_types = {record.get("type") for record in artifact_records}
+    for artifact_type in args.require_artifact:
+        if artifact_type in artifact_types:
+            print(f"artifact ok: {artifact_type}")
+        else:
+            print(f"artifact missing: {artifact_type}")
+            failed = True
+    return 1 if failed else 0
 
 
 def cmd_memory_review(args):
@@ -1262,7 +1363,15 @@ def build_parser():
 
     watch_parser = subparsers.add_parser("watch")
     watch_parser.add_argument("run_id", nargs="?", default="latest")
+    watch_parser.add_argument("--follow", action="store_true")
+    watch_parser.add_argument("--interval", type=float, default=2.0)
     watch_parser.set_defaults(func=cmd_watch)
+
+    experiment_parser = subparsers.add_parser("experiment")
+    experiment_sub = experiment_parser.add_subparsers(dest="experiment_command", required=True)
+    experiment_init = experiment_sub.add_parser("init")
+    experiment_init.add_argument("path")
+    experiment_init.set_defaults(func=cmd_experiment_init)
 
     import_parser = subparsers.add_parser("import")
     import_parser.add_argument("source")
@@ -1460,6 +1569,11 @@ def build_parser():
     run_trace = run_sub.add_parser("trace")
     run_trace.add_argument("run_id")
     run_trace.set_defaults(func=cmd_run_trace)
+    run_check = run_sub.add_parser("check")
+    run_check.add_argument("run_id")
+    run_check.add_argument("--require-file", action="append", default=[])
+    run_check.add_argument("--require-artifact", action="append", default=[])
+    run_check.set_defaults(func=cmd_run_check)
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)

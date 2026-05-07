@@ -97,9 +97,9 @@ def _tool_wrapper(root, run_dir, run_id, participant, tool_id):
         return filesystem_list
 
     if tool_id == "shell.run":
-        def shell_run(command: str = "", cwd: str = ".", timeout: int = 60) -> str:
+        def shell_run(command: str = "", cwd: str = ".", timeout: int = 60, allow_failure: bool = False) -> str:
             """Run a shell command from the Novi workspace and capture stdout/stderr."""
-            return record_call({"command": command, "cwd": cwd, "timeout": timeout})
+            return record_call({"command": command, "cwd": cwd, "timeout": timeout, "allow_failure": allow_failure})
 
         return shell_run
 
