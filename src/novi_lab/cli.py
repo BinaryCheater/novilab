@@ -1,5 +1,6 @@
 import argparse
 import os
+import shlex
 import sys
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .agents import (
     remove_agent_list_value,
     set_agent_model,
 )
+from .litellm_proxy import litellm_start_command, run_litellm_proxy, write_litellm_proxy_config
 from .processing import process_imported_document, process_imported_documents
 from .runner import start_deterministic_run
 from .skills import discover_skills
@@ -1134,6 +1136,15 @@ def _configured_model_from_args(args):
             "base_url": args.base_url,
             "api_key": args.api_key,
         }
+    if args.provider == "litellm-proxy":
+        return {
+            "provider": "litellm_proxy",
+            "model": args.model,
+            "base_url": args.base_url or "http://localhost:4000/v1",
+            "api_key": args.api_key,
+            "api_shape": args.api_shape,
+            "auto_start": not args.no_auto_start,
+        }
     raise RuntimeError(f"Unknown model provider: {args.provider}")
 
 
@@ -1158,6 +1169,33 @@ def cmd_doctor_model(args):
     print(f"Base URL: {base_url}")
     print(f"API key: {'set' if api_key else 'unset'}")
     return 0
+
+
+def cmd_litellm_init(args):
+    path = write_litellm_proxy_config(
+        Path.cwd(),
+        model_name=args.model_name,
+        upstream_model=args.upstream_model,
+        upstream_api_key_env=args.upstream_api_key_env,
+        proxy_api_key_env=args.proxy_api_key_env,
+        port=args.port,
+    )
+    print(f"LiteLLM proxy config written: {path}")
+    print(f"Configured model provider: litellm_proxy")
+    print(f"Model alias: {args.model_name}")
+    print(f"Base URL: http://localhost:{args.port}/v1")
+    print(f"API shape: responses")
+    print(f"Auto start: enabled")
+    print(f"Manual start: novi litellm start --port {args.port}")
+    return 0
+
+
+def cmd_litellm_start(args):
+    command = litellm_start_command(Path.cwd(), port=args.port)
+    if args.print_command:
+        print(" ".join(shlex.quote(part) for part in command))
+        return 0
+    return run_litellm_proxy(Path.cwd(), port=args.port)
 
 
 def build_parser():
@@ -1228,11 +1266,27 @@ def build_parser():
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
     configure_model = configure_sub.add_parser("model")
-    configure_model.add_argument("provider", choices=["siliconflow", "openai-chat", "openai-responses"])
+    configure_model.add_argument("provider", choices=["siliconflow", "openai-chat", "openai-responses", "litellm-proxy"])
     configure_model.add_argument("--model", required=True)
     configure_model.add_argument("--api-key")
     configure_model.add_argument("--base-url")
+    configure_model.add_argument("--api-shape", choices=["responses", "chat_completions"], default="responses")
+    configure_model.add_argument("--no-auto-start", action="store_true")
     configure_model.set_defaults(func=cmd_configure_model)
+
+    litellm_parser = subparsers.add_parser("litellm")
+    litellm_sub = litellm_parser.add_subparsers(dest="litellm_command", required=True)
+    litellm_init = litellm_sub.add_parser("init")
+    litellm_init.add_argument("--model-name", required=True)
+    litellm_init.add_argument("--upstream-model", required=True)
+    litellm_init.add_argument("--upstream-api-key-env", required=True)
+    litellm_init.add_argument("--proxy-api-key-env", default="LITELLM_PROXY_API_KEY")
+    litellm_init.add_argument("--port", type=int, default=4000)
+    litellm_init.set_defaults(func=cmd_litellm_init)
+    litellm_start = litellm_sub.add_parser("start")
+    litellm_start.add_argument("--port", type=int, default=4000)
+    litellm_start.add_argument("--print-command", action="store_true")
+    litellm_start.set_defaults(func=cmd_litellm_start)
 
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("message")

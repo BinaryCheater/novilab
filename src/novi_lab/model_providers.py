@@ -1,5 +1,6 @@
 import os
 
+from .litellm_proxy import ensure_litellm_proxy
 from .store import project_config
 
 
@@ -8,6 +9,12 @@ def _env(name, fallback=None):
     if value:
         return value
     return fallback
+
+
+def _resolve_secret(value):
+    if isinstance(value, str) and value.startswith("os.environ/"):
+        return os.environ.get(value.split("/", 1)[1])
+    return value
 
 
 def _project_model_config(root):
@@ -38,10 +45,26 @@ def configured_model_record(root, participant):
             "model_profile": _strip_openai_provider(model_profile),
             "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE")),
         }
+    if provider == "openai_responses":
+        return {
+            "model_provider": "openai_responses",
+            "model_profile": _strip_openai_provider(model_profile),
+            "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE")),
+            "model_api_shape": "responses",
+        }
+    if provider == "litellm_proxy":
+        return {
+            "model_provider": "litellm_proxy",
+            "model_profile": _strip_openai_provider(model_profile),
+            "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", "http://localhost:4000/v1"),
+            "model_api_shape": config.get("api_shape", "responses"),
+            "litellm_auto_start": bool(config.get("auto_start", True)),
+        }
     return {
         "model_provider": provider,
         "model_profile": model_profile,
         "model_base_url": config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE")),
+        "model_api_shape": config.get("api_shape"),
     }
 
 
@@ -50,10 +73,10 @@ def resolve_deepagents_model(root, participant):
     provider = config.get("provider") or _env("NOVI_MODEL_PROVIDER", "deepagents_default")
     model_profile = model_profile_from_participant(root, participant)
 
-    if provider in {"deepagents_default", "openai_responses"}:
+    if provider == "deepagents_default":
         return model_profile, configured_model_record(root, participant)
 
-    if provider in {"openai_chat", "openai_compatible_chat", "siliconflow"}:
+    if provider in {"openai_chat", "openai_compatible_chat", "siliconflow", "litellm_proxy", "openai_responses"}:
         try:
             from langchain_openai import ChatOpenAI
         except ImportError as exc:
@@ -64,7 +87,11 @@ def resolve_deepagents_model(root, participant):
 
         model_name = _strip_openai_provider(model_profile)
         base_url = config.get("base_url") or _env("NOVI_API_BASE", _env("OPENAI_API_BASE"))
-        api_key = config.get("api_key") or _env("NOVI_API_KEY", _env("OPENAI_API_KEY"))
+        api_key = _resolve_secret(config.get("api_key")) or _env("NOVI_API_KEY", _env("OPENAI_API_KEY"))
+        if provider == "litellm_proxy":
+            base_url = base_url or "http://localhost:4000/v1"
+            api_key = api_key or _env("LITELLM_PROXY_API_KEY")
+            ensure_litellm_proxy(root, config)
         if not base_url:
             raise RuntimeError("OpenAI-compatible chat provider requires NOVI_API_BASE or OPENAI_API_BASE.")
         if not api_key:
@@ -73,7 +100,7 @@ def resolve_deepagents_model(root, participant):
             model=model_name,
             api_key=api_key,
             base_url=base_url,
-            use_responses_api=False,
+            use_responses_api=provider == "openai_responses" or (provider == "litellm_proxy" and config.get("api_shape", "responses") == "responses"),
         ), configured_model_record(root, participant)
 
     raise RuntimeError(f"Unknown model provider: {provider}")

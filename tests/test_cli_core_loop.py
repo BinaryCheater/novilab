@@ -1745,6 +1745,249 @@ def test_configure_model_writes_project_config_without_printing_secret(tmp_path)
     assert "secret-config-key" not in doctor.stdout
 
 
+def test_litellm_init_writes_proxy_config_and_enables_autostart(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--proxy-api-key-env",
+        "LITELLM_PROXY_API_KEY",
+    )
+
+    assert result.returncode == 0, result.stderr
+    proxy_config = tmp_path / ".novi" / "litellm" / "config.yaml"
+    proxy_text = proxy_config.read_text(encoding="utf-8")
+    project_text = (tmp_path / ".novi" / "novi.yaml").read_text(encoding="utf-8")
+    assert "model_name: research-primary" in proxy_text
+    assert "model: openai/gpt-4.1-mini" in proxy_text
+    assert "api_key: os.environ/OPENAI_API_KEY" in proxy_text
+    assert "master_key: os.environ/LITELLM_PROXY_API_KEY" in proxy_text
+    assert "provider: litellm_proxy" in project_text
+    assert "model: research-primary" in project_text
+    assert "base_url: http://localhost:4000/v1" in project_text
+    assert "api_key: os.environ/LITELLM_PROXY_API_KEY" in project_text
+    assert "api_shape: responses" in project_text
+    assert "auto_start: true" in project_text
+    assert "LiteLLM proxy config written" in result.stdout
+    assert "novi litellm start --port 4000" in result.stdout
+
+
+def test_litellm_start_can_print_manual_foreground_command(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--port",
+        "41997",
+    )
+
+    result = run_cli(tmp_path, "litellm", "start", "--port", "4100", "--print-command")
+
+    assert result.returncode == 0, result.stderr
+    assert "litellm --config" in result.stdout
+    assert ".novi/litellm/config.yaml" in result.stdout
+    assert "--port 4100" in result.stdout
+
+
+def test_litellm_proxy_autostarts_for_deepagents_runs_and_uses_responses_shape(tmp_path, monkeypatch):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_litellm = bin_dir / "litellm"
+    fake_litellm.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                "echo \"$@\" > \"$PWD/litellm-start.log\"",
+                "exit 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_litellm.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("NOVI_LITELLM_BIN", str(fake_litellm))
+    monkeypatch.setenv("NOVI_LITELLM_FORCE_START", "1")
+    monkeypatch.setenv("LITELLM_PROXY_API_KEY", "proxy-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "upstream-key")
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--port",
+        "41997",
+    )
+    run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "litellm-proxy",
+        "--model",
+        "research-primary",
+        "--base-url",
+        "http://127.0.0.2:41997/v1",
+        "--api-key",
+        "os.environ/LITELLM_PROXY_API_KEY",
+    )
+    run_cli(tmp_path, "session", "create", "litellm auto start")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke litellm", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+    start_record = (tmp_path / ".novi" / "litellm" / "last_start.yaml").read_text()
+    assert "mode: auto" in start_record
+    assert str(fake_litellm) in start_record
+    assert ".novi/litellm/config.yaml" in start_record
+    assert "- '41997'" in start_record or "- 41997" in start_record
+    assert "model=research-primary" in response_text
+    assert "base_url=http://127.0.0.2:41997/v1" in response_text
+    assert "responses=True" in response_text
+    assert '"model_provider": "litellm_proxy"' in model_calls
+    assert '"model_api_shape": "responses"' in model_calls
+    assert '"litellm_auto_start": true' in model_calls
+    assert "model_provider: litellm_proxy" in request_text
+    assert "model_api_shape: responses" in request_text
+
+
+def test_openai_responses_provider_uses_responses_api_with_project_config(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "openai-responses",
+        "--model",
+        "gpt-4.1-mini",
+        "--base-url",
+        "https://api.openai.test/v1",
+        "--api-key",
+        "secret-responses-key",
+    )
+    run_cli(tmp_path, "session", "create", "responses run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke responses", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+    assert "model=gpt-4.1-mini" in response_text
+    assert "base_url=https://api.openai.test/v1" in response_text
+    assert "responses=True" in response_text
+    assert '"model_provider": "openai_responses"' in model_calls
+    assert '"model_api_shape": "responses"' in model_calls
+    assert "model_provider: openai_responses" in request_text
+    assert "model_api_shape: responses" in request_text
+    assert "secret-responses-key" not in request_text
+
+
 def test_ask_records_messages_and_includes_recent_context(tmp_path):
     (tmp_path / "deepagents.py").write_text(
         "\n".join(
