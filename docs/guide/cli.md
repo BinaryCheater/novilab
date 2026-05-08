@@ -65,6 +65,19 @@ novi watch latest --follow
 
 `watch --follow` 会持续刷新运行状态；如果 run 已完成，会打印一次后退出。
 
+### Watch
+
+观察最新 run：
+
+```bash
+novi watch latest
+novi watch latest --follow
+novi watch run_... --interval 5
+```
+
+`watch --follow` 会持续刷新运行状态；如果 run 已完成，会打印一次后退出。
+`--interval` 控制刷新间隔（秒）。
+
 ### Experiment
 
 ```bash
@@ -125,6 +138,29 @@ novi artifact show art_...
 novi knowledge list
 novi knowledge show contrib_...
 ```
+
+### LiteLLM Proxy
+
+```bash
+novi litellm init \
+  --model-name research-primary \
+  --upstream-model openai/gpt-4.1-mini \
+  --upstream-api-key-env OPENAI_API_KEY
+
+novi litellm start --port 4000
+```
+
+`novi litellm init` 生成 `.novi/litellm/config.yaml` 并配置 model provider 为 `litellm_proxy`。
+DeepAgents 调用时会按配置自动启动 proxy；如果端口已有服务则不会重复启动。
+需要安装 LiteLLM extra：`uv sync --extra litellm`。
+
+### Doctor
+
+```bash
+novi doctor model
+```
+
+`doctor model` 检查模型配置是否可用，不显示 API key 内容。
 
 ### Agent, Tool, Workflow
 

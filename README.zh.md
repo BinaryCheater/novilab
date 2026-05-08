@@ -12,6 +12,7 @@ Novi 不是 Codex、Claude Code、DeepAgents 或其他执行 agent 的替代品�
 - [CLI 说明](docs/guide/cli.md)
 - [Workflow 模型](docs/guide/workflows.md)
 - [Research Loop](docs/guide/research-loop.md)
+- [Research Iteration](docs/guide/research-iteration.md)
 - [文档导入](docs/guide/document-ingest.md)
 - [Review 与 Artifacts](docs/guide/review-and-artifacts.md)
 - [配置说明](docs/guide/configuration.md)
@@ -23,11 +24,15 @@ Novi 不是 Codex、Claude Code、DeepAgents 或其他执行 agent 的替代品�
 当前原型可以：
 
 - 初始化本地 `.novi/` 工作区；
-- 配置 OpenAI-compatible chat 模型；
+- 配置 OpenAI-compatible chat 模型和 LiteLLM proxy gateway；
 - 运行感知 session 的 `ask`、`run`、`task` 命令；
 - 通过 deterministic local kernel 或可选 DeepAgents kernel 执行；
 - 归档 prompt pack、model messages、model calls、tool calls、trace 和 artifacts；
-- 按 workflow step 推进可恢复 task；
+- 以 step contract 和 expected output 推进可恢复 task workflow；
+- 暴露薄审计工具（filesystem、shell、web、git、artifact）；
+- 创建实验目录骨架（`novi experiment init`）；
+- 通过 `task note` 和 `task amend` 非阻塞注入人工指导；
+- 用 `novi watch --follow` 实时观察 run 进度；
 - 把导入文档处理成可审查 proposal；
 - review、check、accept 文档 patch contribution。
 
@@ -36,7 +41,7 @@ Novi 不是 Codex、Claude Code、DeepAgents 或其他执行 agent 的替代品�
 ```bash
 novi init
 novi configure model siliconflow --model "..." --api-key "..."
-novi task "研究目标" --steps 2
+novi task "研究目标" --workflow research-iteration --kernel deepagents --rounds 1
 novi trace latest
 novi output latest
 novi artifact list
