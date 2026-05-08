@@ -832,7 +832,7 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     run_path = tmp_path / ".novi" / "runs" / run_id / "run.yaml"
     prompt_part = tmp_path / ".novi" / "runs" / run_id / "prompt_parts" / "80-current-task.md"
 
-    assert "Workflow step: plan" in create.stdout
+    assert "Step:  plan" in create.stdout
     assert "workflow_state:" in task_path.read_text(encoding="utf-8")
     assert "current_step_id: work" in task_path.read_text(encoding="utf-8")
     assert "workflow_step_id: plan" in run_path.read_text(encoding="utf-8")
@@ -844,7 +844,7 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     continued_run_path = tmp_path / ".novi" / "runs" / continued_run_id / "run.yaml"
 
     assert continued.returncode == 0, continued.stderr
-    assert "Workflow step: work" in continued.stdout
+    assert "Step:  work" in continued.stdout
     assert "Current step: continue" in inspect.stdout
     assert "workflow_step_id: work" in continued_run_path.read_text(encoding="utf-8")
 
@@ -858,8 +858,8 @@ def test_task_continue_steps_runs_until_step_limit(tmp_path):
 
     assert continued.returncode == 0, continued.stderr
     assert "Task runs: 2" in continued.stdout
-    assert "Workflow step: work" in continued.stdout
-    assert "Workflow step: continue" in continued.stdout
+    assert "Step:  work" in continued.stdout
+    assert "Step:  continue" in continued.stdout
     assert inspect.stdout.count("run_") >= 3
 
 
@@ -872,8 +872,8 @@ def test_task_create_steps_runs_initial_workflow_steps(tmp_path):
 
     assert create.returncode == 0, create.stderr
     assert "Task runs: 2" in create.stdout
-    assert "Workflow step: plan" in create.stdout
-    assert "Workflow step: work" in create.stdout
+    assert "Step:  plan" in create.stdout
+    assert "Step:  work" in create.stdout
     assert inspect.stdout.count("run_") >= 2
 
 
@@ -1763,7 +1763,15 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
                 "        self.name = name",
                 "",
                 "    def invoke(self, payload):",
-                "        tool_result = self.tools[0](query='adapter smoke')",
+                "        return self._result(payload)",
+                "",
+                "    def stream(self, payload, stream_mode=None, **kwargs):",
+                "        result = self._result(payload)",
+                "        if isinstance(stream_mode, list) and 'updates' in stream_mode:",
+                "            yield ('updates', {'agent': result})",
+                "",
+                "    def _result(self, payload):",
+                "        tool_result = self.tools[0](query='adapter smoke') if self.tools else 'no tools'",
                 "        return {",
                 "            'messages': [FakeMessage('deepagents response\\n' + tool_result)],",
                 "            'files': {'/notes.md': {'content': 'deepagents working file'}}",
@@ -1829,6 +1837,14 @@ def test_task_deepagents_research_loop_archives_model_artifacts(tmp_path):
                 "        self.system_prompt = system_prompt or ''",
                 "",
                 "    def invoke(self, payload):",
+                "        return self._result(payload)",
+                "",
+                "    def stream(self, payload, stream_mode=None, **kwargs):",
+                "        result = self._result(payload)",
+                "        if isinstance(stream_mode, list) and 'updates' in stream_mode:",
+                "            yield ('updates', {'agent': result})",
+                "",
+                "    def _result(self, payload):",
                 "        FakeAgent.calls += 1",
                 "        assert 'research-note.md' in self.system_prompt",
                 "        assert 'next-actions.md' in self.system_prompt",

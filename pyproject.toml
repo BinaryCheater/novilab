@@ -17,6 +17,7 @@ deepagents = [
     "socksio>=1.0",
 ]
 litellm = ["litellm[proxy]>=1.0"]
+all = ["novi-lab[dev,deepagents,litellm]"]
 
 [project.scripts]
 novi = "novi_lab.cli:main"

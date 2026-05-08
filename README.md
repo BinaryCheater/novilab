@@ -63,14 +63,14 @@ The root README is an orientation document. It should not be used as a developme
 Use `uv` for the Python environment:
 
 ```bash
-uv sync --extra dev --extra deepagents
-uv run --extra dev pytest
+uv sync --extra all
+uv run --extra all pytest
 ```
 
 During development, prefer the console script entrypoint:
 
 ```bash
-uv run --extra dev --extra deepagents novi --help
+uv run --extra all novi --help
 ```
 
 ## Repository Policy

@@ -424,7 +424,14 @@ def _finish_task_step(root, task, workflow, step, run):
 def _run_task_step(root, task, session, args):
     workflow, _state, step, instruction = _prepare_task_step(root, task)
     agents = [load_agent(root, agent_id) for agent_id in args.agent]
-    print(f"Workflow step: {step['id']} - {step.get('title', step['id'])}")
+    # outer frame
+    print()
+    print("=" * 48)
+    print(f"Task:  {task.get('objective', task['id'])}")
+    print(f"ID:    {task['id']}")
+    print(f"Step:  {step['id']} ─ {step.get('title', step['id'])}")
+    print(f"Round: {task.get('workflow_state', {}).get('iteration', 1)}")
+    print("=" * 48)
     _print_step_contract(step)
     run = start_deterministic_run(
         root,

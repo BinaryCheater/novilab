@@ -128,8 +128,8 @@ novi accept --reviewed --task task_...
 在仓库内运行源码版本：
 
 ```bash
-uv run --extra dev --extra deepagents novi --help
-uv run --extra dev --extra deepagents novi task "研究目标" \
+uv run --extra all novi --help
+uv run --extra all novi task "研究目标" \
   --workflow research-iteration \
   --rounds 1
 ```

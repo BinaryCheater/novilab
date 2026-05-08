@@ -56,7 +56,7 @@ novi task "研究目标" --kernel deepagents
 `novi litellm init` 会生成 `.novi/litellm/config.yaml`，并把模型 provider 配置为 `litellm_proxy`。后续 DeepAgents 调用会默认按该配置启动 LiteLLM proxy；如果端口已有服务监听，则不会重复启动。需要安装 LiteLLM extra：
 
 ```bash
-uv sync --extra litellm
+uv sync --extra all
 ```
 
 ### 检查配置
