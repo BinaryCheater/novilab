@@ -46,6 +46,12 @@ def test_deepagents_extra_supports_socks_proxy_environments():
     assert '"socksio' in pyproject or '"httpx[socks]' in pyproject
 
 
+def test_litellm_extra_installs_proxy_server_dependencies():
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+
+    assert '"litellm[proxy]' in pyproject
+
+
 def test_init_creates_local_workspace(tmp_path):
     result = run_cli(tmp_path, "init")
 
@@ -2035,6 +2041,10 @@ def test_litellm_init_writes_proxy_config_and_enables_autostart(tmp_path):
         "openai/gpt-4.1-mini",
         "--upstream-api-key-env",
         "OPENAI_API_KEY",
+        "--upstream-base-url",
+        "https://api.openai.example/v1",
+        "--api-shape",
+        "chat_completions",
         "--proxy-api-key-env",
         "LITELLM_PROXY_API_KEY",
     )
@@ -2046,12 +2056,13 @@ def test_litellm_init_writes_proxy_config_and_enables_autostart(tmp_path):
     assert "model_name: research-primary" in proxy_text
     assert "model: openai/gpt-4.1-mini" in proxy_text
     assert "api_key: os.environ/OPENAI_API_KEY" in proxy_text
+    assert "api_base: https://api.openai.example/v1" in proxy_text
     assert "master_key: os.environ/LITELLM_PROXY_API_KEY" in proxy_text
     assert "provider: litellm_proxy" in project_text
     assert "model: research-primary" in project_text
     assert "base_url: http://localhost:4000/v1" in project_text
     assert "api_key: os.environ/LITELLM_PROXY_API_KEY" in project_text
-    assert "api_shape: responses" in project_text
+    assert "api_shape: chat_completions" in project_text
     assert "auto_start: true" in project_text
     assert "LiteLLM proxy config written" in result.stdout
     assert "novi litellm start --port 4000" in result.stdout

@@ -3,6 +3,7 @@ import os
 import shutil
 import socket
 import subprocess
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -26,18 +27,25 @@ def write_litellm_proxy_config(
     model_name,
     upstream_model,
     upstream_api_key_env,
+    upstream_base_url=None,
     proxy_api_key_env="LITELLM_PROXY_API_KEY",
     port=4000,
+    api_shape="responses",
 ):
+    if "/" not in upstream_model:
+        upstream_model = f"openai/{upstream_model}"
+    litellm_params = {
+        "model": upstream_model,
+        "api_key": f"os.environ/{upstream_api_key_env}",
+    }
+    if upstream_base_url:
+        litellm_params["api_base"] = upstream_base_url
     path = litellm_config_path(root)
     config = {
         "model_list": [
             {
                 "model_name": model_name,
-                "litellm_params": {
-                    "model": upstream_model,
-                    "api_key": f"os.environ/{upstream_api_key_env}",
-                },
+                "litellm_params": litellm_params,
             }
         ],
         "general_settings": {
@@ -52,7 +60,7 @@ def write_litellm_proxy_config(
             "model": model_name,
             "base_url": f"http://localhost:{port}/v1",
             "api_key": f"os.environ/{proxy_api_key_env}",
-            "api_shape": "responses",
+            "api_shape": api_shape,
             "auto_start": True,
         },
     )
@@ -125,6 +133,16 @@ def ensure_litellm_proxy(root, model_config):
     except subprocess.TimeoutExpired:
         pass
     _PROCESSES.append(process)
+    for _ in range(75):
+        if process.poll() is not None:
+            break
+        if _is_port_open(host, port):
+            return True
+        time.sleep(0.2)
+    if process.poll() is not None:
+        if process.returncode == 0:
+            return True
+        raise RuntimeError("LiteLLM proxy exited before accepting connections.")
     return True
 
 

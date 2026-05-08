@@ -1453,14 +1453,16 @@ def cmd_litellm_init(args):
         model_name=args.model_name,
         upstream_model=args.upstream_model,
         upstream_api_key_env=args.upstream_api_key_env,
+        upstream_base_url=args.upstream_base_url,
         proxy_api_key_env=args.proxy_api_key_env,
         port=args.port,
+        api_shape=args.api_shape,
     )
     print(f"LiteLLM proxy config written: {path}")
     print(f"Configured model provider: litellm_proxy")
     print(f"Model alias: {args.model_name}")
     print(f"Base URL: http://localhost:{args.port}/v1")
-    print(f"API shape: responses")
+    print(f"API shape: {args.api_shape}")
     print(f"Auto start: enabled")
     print(f"Manual start: novi litellm start --port {args.port}")
     return 0
@@ -1568,7 +1570,9 @@ def build_parser():
     litellm_init.add_argument("--model-name", required=True)
     litellm_init.add_argument("--upstream-model", required=True)
     litellm_init.add_argument("--upstream-api-key-env", required=True)
+    litellm_init.add_argument("--upstream-base-url")
     litellm_init.add_argument("--proxy-api-key-env", default="LITELLM_PROXY_API_KEY")
+    litellm_init.add_argument("--api-shape", choices=["responses", "chat_completions"], default="responses")
     litellm_init.add_argument("--port", type=int, default=4000)
     litellm_init.set_defaults(func=cmd_litellm_init)
     litellm_start = litellm_sub.add_parser("start")
