@@ -430,7 +430,7 @@ def _run_task_step(root, task, session, args):
     print(f"Task:  {task.get('objective', task['id'])}")
     print(f"ID:    {task['id']}")
     print(f"Step:  {step['id']} ─ {step.get('title', step['id'])}")
-    print(f"Round: {task.get('workflow_state', {}).get('iteration', 1)}")
+    print(f"Round: {int(task.get('workflow_state', {}).get('iteration') or 0) + 1}")
     print("=" * 48)
     _print_step_contract(step)
     run = start_deterministic_run(
@@ -754,11 +754,21 @@ def _print_watch_snapshot(root, run_id):
     if not run:
         raise RuntimeError(f"Run not found: {run_id}")
     run_dir = _run_dir(root, run_id)
+    task = None
+    if run.get("task_id"):
+        try:
+            task = load_task(root, run["task_id"])
+        except RuntimeError:
+            task = None
     print(f"Run: {run_id}")
     print(f"Status: {run.get('status', '-')}")
     if run.get("workflow_id"):
         print(f"Workflow: {run.get('workflow_id')} / {run.get('workflow_step_id') or '-'}")
-    print(f"Objective: {run.get('objective', '-')}")
+    if task:
+        print(f"Task: {task.get('id', run.get('task_id'))}")
+        print(f"Objective: {task.get('objective', '-')}")
+    else:
+        print(f"Objective: {run.get('objective', '-')}")
     print("")
     print("Events:")
     events = read_jsonl(run_dir / "events.jsonl")

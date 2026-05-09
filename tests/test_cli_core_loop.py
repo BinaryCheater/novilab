@@ -833,6 +833,7 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     prompt_part = tmp_path / ".novi" / "runs" / run_id / "prompt_parts" / "80-current-task.md"
 
     assert "Step:  plan" in create.stdout
+    assert "Round: 1" in create.stdout
     assert "workflow_state:" in task_path.read_text(encoding="utf-8")
     assert "current_step_id: work" in task_path.read_text(encoding="utf-8")
     assert "workflow_step_id: plan" in run_path.read_text(encoding="utf-8")
@@ -847,6 +848,21 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     assert "Step:  work" in continued.stdout
     assert "Current step: continue" in inspect.stdout
     assert "workflow_step_id: work" in continued_run_path.read_text(encoding="utf-8")
+
+
+def test_watch_task_run_shows_concise_task_context(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Keep live status readable", "--kernel", "simple")
+    run_id = parse_id(create.stdout, "run_")
+
+    watch = run_cli(tmp_path, "watch", "latest")
+
+    assert watch.returncode == 0, watch.stderr
+    assert f"Run: {run_id}" in watch.stdout
+    assert "Objective: Keep live status readable" in watch.stdout
+    assert "Workflow: research-loop / plan" in watch.stdout
+    assert "Task objective:" not in watch.stdout
+    assert "Execute only this workflow step" not in watch.stdout
 
 
 def test_task_continue_steps_runs_until_step_limit(tmp_path):
