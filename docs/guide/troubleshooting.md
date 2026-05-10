@@ -28,7 +28,7 @@ novi doctor model
 如果环境使用 SOCKS proxy，需要 deepagents extra 中包含 socks 支持。开发期运行：
 
 ```bash
-uv sync --extra deepagents
+uv sync --extra all
 ```
 
 ## 找不到 contribution

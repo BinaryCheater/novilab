@@ -13,6 +13,7 @@ Novi is not a replacement for Codex, Claude Code, DeepAgents, or other execution
 - [CLI Reference](docs/guide/cli.md)
 - [Workflow Model](docs/guide/workflows.md)
 - [Research Loop](docs/guide/research-loop.md)
+- [Research Iteration](docs/guide/research-iteration.md)
 - [Document Ingest](docs/guide/document-ingest.md)
 - [Review And Artifacts](docs/guide/review-and-artifacts.md)
 - [Configuration](docs/guide/configuration.md)
@@ -24,11 +25,15 @@ Novi is not a replacement for Codex, Claude Code, DeepAgents, or other execution
 The current prototype can:
 
 - initialize a local `.novi/` workspace;
-- configure OpenAI-compatible chat models;
+- configure OpenAI-compatible chat models and LiteLLM proxy gateways;
 - run session-aware `ask`, `run`, and `task` commands;
 - execute through a deterministic local kernel or optional DeepAgents kernel;
 - archive prompt packs, model messages, model calls, tool calls, traces, and artifacts;
-- run resumable task workflows step by step;
+- run resumable task workflows with step contracts and expected outputs;
+- expose thin auditable tools (filesystem, shell, web, git, artifact);
+- scaffold experiment directories (`novi experiment init`);
+- inject nonblocking human guidance via `task note` and `task amend`;
+- watch live run progress with `novi watch --follow`;
 - ingest documents into reviewable proposals;
 - review, check, and accept document patch contributions.
 
@@ -37,7 +42,7 @@ The most useful current loop is:
 ```bash
 novi init
 novi configure model siliconflow --model "..." --api-key "..."
-novi task "research objective" --steps 2
+novi task "research objective" --workflow research-iteration --kernel deepagents --rounds 1
 novi trace latest
 novi output latest
 novi artifact list
@@ -58,14 +63,14 @@ The root README is an orientation document. It should not be used as a developme
 Use `uv` for the Python environment:
 
 ```bash
-uv sync --extra dev --extra deepagents
-uv run --extra dev pytest
+uv sync --extra all
+uv run --extra all pytest
 ```
 
 During development, prefer the console script entrypoint:
 
 ```bash
-uv run --extra dev --extra deepagents novi --help
+uv run --extra all novi --help
 ```
 
 ## Repository Policy

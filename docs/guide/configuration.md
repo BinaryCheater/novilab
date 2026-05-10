@@ -2,7 +2,7 @@
 
 ## 模型配置
 
-Novi 当前支持 OpenAI-compatible chat-completions provider。配置写入 `.novi/novi.yaml`。
+Novi 当前支持 OpenAI-compatible chat-completions provider、OpenAI Responses provider，以及 LiteLLM proxy gateway。配置写入 `.novi/novi.yaml`。
 
 ### SiliconFlow
 
@@ -25,6 +25,38 @@ novi configure model openai-chat \
   --model "MODEL_NAME" \
   --base-url "https://provider.example.com/v1" \
   --api-key "YOUR_API_KEY"
+```
+
+### LiteLLM proxy
+
+LiteLLM 有两种使用方式。
+
+手动前台启动：
+
+```bash
+novi litellm init \
+  --model-name research-primary \
+  --upstream-model openai/gpt-4.1-mini \
+  --upstream-api-key-env OPENAI_API_KEY
+
+novi litellm start --port 4000
+```
+
+默认自动启动：
+
+```bash
+novi litellm init \
+  --model-name research-primary \
+  --upstream-model openai/gpt-4.1-mini \
+  --upstream-api-key-env OPENAI_API_KEY
+
+novi task "研究目标" --kernel deepagents
+```
+
+`novi litellm init` 会生成 `.novi/litellm/config.yaml`，并把模型 provider 配置为 `litellm_proxy`。后续 DeepAgents 调用会默认按该配置启动 LiteLLM proxy；如果端口已有服务监听，则不会重复启动。需要安装 LiteLLM extra：
+
+```bash
+uv sync --extra all
 ```
 
 ### 检查配置

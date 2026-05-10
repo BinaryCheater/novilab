@@ -165,7 +165,7 @@ def start_deterministic_run(root, session, run_type, objective, agents=None, ker
         "includes": ["project spec summary", "session summary", "active skill", "visible tools"],
         "excludes": ["raw old messages", "unreviewed memory", "network content"],
         "skill_refs": run_record["skill_refs"],
-        "tool_refs": ["search_stub.query"],
+        "tool_refs": list(participants[0].get("tool_scope", [])) if participants else [],
         "accepted_knowledge_refs": [
             {
                 "id": record["id"],

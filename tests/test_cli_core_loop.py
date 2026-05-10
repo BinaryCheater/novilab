@@ -46,6 +46,12 @@ def test_deepagents_extra_supports_socks_proxy_environments():
     assert '"socksio' in pyproject or '"httpx[socks]' in pyproject
 
 
+def test_litellm_extra_installs_proxy_server_dependencies():
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+
+    assert '"litellm[proxy]' in pyproject
+
+
 def test_init_creates_local_workspace(tmp_path):
     result = run_cli(tmp_path, "init")
 
@@ -135,6 +141,26 @@ def test_init_creates_research_iteration_workflow(tmp_path):
     assert "physical-priors.md" in workflow_text
 
 
+def test_init_creates_thin_loop_workflow_templates(tmp_path):
+    result = run_cli(tmp_path, "init")
+
+    assert result.returncode == 0, result.stderr
+    workflow_dir = tmp_path / ".novi" / "workflows"
+    analysis_text = (workflow_dir / "analysis-loop.yaml").read_text(encoding="utf-8")
+    experiment_text = (workflow_dir / "experiment-loop.yaml").read_text(encoding="utf-8")
+    improvement_text = (workflow_dir / "improvement-loop.yaml").read_text(encoding="utf-8")
+
+    assert "id: analysis-loop" in analysis_text
+    assert "expected_files:" in analysis_text
+    assert "evidence-map.md" in analysis_text
+    assert "id: experiment-loop" in experiment_text
+    assert "required_tools:" in experiment_text
+    assert "shell.run" in experiment_text
+    assert "metrics.md" in experiment_text
+    assert "id: improvement-loop" in improvement_text
+    assert "continue_from:" in improvement_text
+
+
 def test_agent_create_list_and_show(tmp_path):
     run_cli(tmp_path, "init")
 
@@ -198,6 +224,263 @@ def test_tool_list_and_show_builtin_tool(tmp_path):
     assert "Tool: search_stub.query" in show_result.stdout
     assert "Risk: read_only" in show_result.stdout
     assert "Policy: allowed" in show_result.stdout
+
+
+def test_init_exposes_atomic_tools_to_default_orchestrator(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "agent", "show", "agent_orchestrator")
+
+    assert result.returncode == 0, result.stderr
+    assert "filesystem.read" in result.stdout
+    assert "filesystem.write" in result.stdout
+    assert "filesystem.list" in result.stdout
+    assert "shell.run" in result.stdout
+    assert "web.fetch" in result.stdout
+    assert "artifact.save" in result.stdout
+
+
+def test_atomic_tools_write_list_shell_and_save_artifacts(tmp_path):
+    run_cli(tmp_path, "init")
+
+    write_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "filesystem.write",
+        "--arg",
+        "path=notes/result.md",
+        "--arg",
+        "content=useful result",
+    )
+    list_result = run_cli(tmp_path, "tool", "call", "filesystem.list", "--arg", "path=notes")
+    shell_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "shell.run",
+        "--arg",
+        "command=printf shell-output",
+    )
+    artifact_result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "artifact.save",
+        "--arg",
+        "path=notes/result.md",
+        "--arg",
+        "artifact_type=research_note",
+    )
+
+    assert write_result.returncode == 0, write_result.stderr
+    assert (tmp_path / "notes" / "result.md").read_text(encoding="utf-8") == "useful result"
+    assert list_result.returncode == 0, list_result.stderr
+    assert "result.md" in list_result.stdout
+    assert shell_result.returncode == 0, shell_result.stderr
+    assert "shell-output" in shell_result.stdout
+    assert artifact_result.returncode == 0, artifact_result.stderr
+    artifact_id = parse_id(artifact_result.stdout, "art_")
+    assert (tmp_path / ".novi" / "artifacts" / f"{artifact_id}.yaml").exists()
+
+
+def test_watch_latest_shows_run_progress_surface(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "monitoring")
+    run_result = run_cli(tmp_path, "run", "start", "research", "observe this run")
+
+    watch_result = run_cli(tmp_path, "watch", "latest")
+
+    run_id = parse_id(run_result.stdout, "run_")
+    assert watch_result.returncode == 0, watch_result.stderr
+    assert f"Run: {run_id}" in watch_result.stdout
+    assert "Events:" in watch_result.stdout
+    assert "Tool calls:" in watch_result.stdout
+    assert "Artifacts:" in watch_result.stdout
+
+
+def test_watch_follow_exits_for_completed_run(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "monitoring")
+    run_result = run_cli(tmp_path, "run", "start", "research", "observe this run")
+
+    watch_result = run_cli(tmp_path, "watch", "latest", "--follow", "--interval", "0")
+
+    run_id = parse_id(run_result.stdout, "run_")
+    assert watch_result.returncode == 0, watch_result.stderr
+    assert f"Run: {run_id}" in watch_result.stdout
+    assert "Status: completed" in watch_result.stdout
+
+
+def test_shell_run_allow_failure_keeps_failed_experiment_auditable(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "tool",
+        "call",
+        "shell.run",
+        "--arg",
+        "command=printf fail-output && exit 7",
+        "--arg",
+        "allow_failure=true",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "shell.run success execute_local" in result.stdout
+    assert "returncode: 7" in result.stdout
+    assert "fail-output" in result.stdout
+    artifact_id = parse_id(result.stdout, "art_")
+    assert (tmp_path / ".novi" / "artifacts" / f"{artifact_id}.yaml").exists()
+
+
+def test_experiment_init_creates_minimal_runnable_template_at_explicit_path(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(tmp_path, "experiment", "init", "scratch-exp/contact-prior-smoke")
+
+    experiment_dir = tmp_path / "scratch-exp" / "contact-prior-smoke"
+    assert result.returncode == 0, result.stderr
+    assert (experiment_dir / "README.md").exists()
+    assert (experiment_dir / "run.sh").exists()
+    assert (experiment_dir / "outputs").is_dir()
+    assert (experiment_dir / "metrics.md").exists()
+    assert (experiment_dir / "notes.md").exists()
+    assert "Experiment: scratch-exp/contact-prior-smoke" in result.stdout
+
+
+def test_run_check_requires_workspace_files_and_artifact_types(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(tmp_path, "session", "create", "checks")
+    run_result = run_cli(tmp_path, "run", "start", "research", "check artifacts")
+    run_id = parse_id(run_result.stdout, "run_")
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "outputs" / "metrics.md").write_text("# Metrics\n", encoding="utf-8")
+
+    ok = run_cli(
+        tmp_path,
+        "run",
+        "check",
+        run_id,
+        "--require-file",
+        "outputs/metrics.md",
+        "--require-artifact",
+        "research_note",
+    )
+    missing = run_cli(tmp_path, "run", "check", run_id, "--require-artifact", "missing_type")
+
+    assert ok.returncode == 0, ok.stderr
+    assert "file ok: outputs/metrics.md" in ok.stdout
+    assert "artifact ok: research_note" in ok.stdout
+    assert missing.returncode == 1
+    assert "artifact missing: missing_type" in missing.stdout
+
+
+def test_task_output_and_inspect_show_workflow_step_contract(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run the smoke experiment",
+        "--workflow",
+        "experiment-loop",
+        "--kernel",
+        "simple",
+        "--steps",
+        "1",
+    )
+    task_id = parse_id(result.stdout, "task_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+
+    assert result.returncode == 0, result.stderr
+    assert "Required tools:" in result.stdout
+    assert "shell.run" in result.stdout
+    assert "Expected files:" in result.stdout
+    assert "metrics.md" in result.stdout
+    assert inspect.returncode == 0, inspect.stderr
+    assert "Expected outputs:" in inspect.stdout
+    assert "file missing: metrics.md" in inspect.stdout
+    assert "artifact missing: shell_output" in inspect.stdout
+
+
+def test_task_note_and_amend_are_injected_into_next_run_prompt(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Initial experiment goal", "--workflow", "experiment-loop", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+
+    note = run_cli(tmp_path, "task", "note", task_id, "人工观察：优先检查 Q6 failure attribution。")
+    amend = run_cli(tmp_path, "task", "amend", task_id, "Updated goal: run the smallest Q6 diagnostic.")
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--workflow", "experiment-loop", "--kernel", "simple")
+    run_id = parse_labeled_id(continued.stdout, "Task run:", "run_")
+    inspect = run_cli(tmp_path, "task", "inspect", task_id)
+    prompt = run_cli(tmp_path, "run", "prompt", run_id)
+
+    assert note.returncode == 0, note.stderr
+    assert amend.returncode == 0, amend.stderr
+    assert "Task note:" in note.stdout
+    assert "Task amended:" in amend.stdout
+    assert "Updated goal: run the smallest Q6 diagnostic." in inspect.stdout
+    assert "Human guidance:" in inspect.stdout
+    assert "优先检查 Q6 failure attribution" in inspect.stdout
+    assert "Updated goal: run the smallest Q6 diagnostic." in prompt.stdout
+    assert "人工观察：优先检查 Q6 failure attribution。" in prompt.stdout
+
+
+def test_task_pause_blocks_continue_until_resume(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Pauseable task", "--workflow", "analysis-loop", "--kernel", "simple")
+    task_id = parse_id(create.stdout, "task_")
+
+    paused = run_cli(tmp_path, "task", "pause", task_id)
+    blocked = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+    resumed = run_cli(tmp_path, "task", "resume", task_id)
+    continued = run_cli(tmp_path, "task", "continue", task_id, "--kernel", "simple")
+
+    assert paused.returncode == 0, paused.stderr
+    assert "Task paused:" in paused.stdout
+    assert blocked.returncode == 1
+    assert "is paused" in blocked.stderr
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Task resumed:" in resumed.stdout
+    assert continued.returncode == 0, continued.stderr
+    assert "Continued task:" in continued.stdout
+
+
+def test_run_check_from_workflow_uses_step_expected_outputs(tmp_path):
+    run_cli(tmp_path, "init")
+    result = run_cli(
+        tmp_path,
+        "task",
+        "Run the smoke experiment",
+        "--workflow",
+        "experiment-loop",
+        "--kernel",
+        "simple",
+        "--steps",
+        "1",
+    )
+    run_id = parse_labeled_id(result.stdout, "Task run:", "run_")
+
+    missing = run_cli(tmp_path, "run", "check", run_id, "--from-workflow")
+    (tmp_path / "metrics.md").write_text("# Metrics\n", encoding="utf-8")
+    ok = run_cli(
+        tmp_path,
+        "run",
+        "check",
+        run_id,
+        "--from-workflow",
+        "--require-artifact",
+        "research_note",
+    )
+
+    assert missing.returncode == 1
+    assert "file missing: metrics.md" in missing.stdout
+    assert "artifact missing: shell_output" in missing.stdout
+    assert ok.returncode == 1
+    assert "file ok: metrics.md" in ok.stdout
+    assert "artifact ok: research_note" in ok.stdout
+    assert "artifact missing: shell_output" in ok.stdout
 
 
 def test_tool_specs_show_expose_to_routing_metadata(tmp_path):
@@ -549,7 +832,8 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     run_path = tmp_path / ".novi" / "runs" / run_id / "run.yaml"
     prompt_part = tmp_path / ".novi" / "runs" / run_id / "prompt_parts" / "80-current-task.md"
 
-    assert "Workflow step: plan" in create.stdout
+    assert "Step:  plan" in create.stdout
+    assert "Round: 1" in create.stdout
     assert "workflow_state:" in task_path.read_text(encoding="utf-8")
     assert "current_step_id: work" in task_path.read_text(encoding="utf-8")
     assert "workflow_step_id: plan" in run_path.read_text(encoding="utf-8")
@@ -561,9 +845,24 @@ def test_task_records_and_advances_workflow_steps(tmp_path):
     continued_run_path = tmp_path / ".novi" / "runs" / continued_run_id / "run.yaml"
 
     assert continued.returncode == 0, continued.stderr
-    assert "Workflow step: work" in continued.stdout
+    assert "Step:  work" in continued.stdout
     assert "Current step: continue" in inspect.stdout
     assert "workflow_step_id: work" in continued_run_path.read_text(encoding="utf-8")
+
+
+def test_watch_task_run_shows_concise_task_context(tmp_path):
+    run_cli(tmp_path, "init")
+    create = run_cli(tmp_path, "task", "Keep live status readable", "--kernel", "simple")
+    run_id = parse_id(create.stdout, "run_")
+
+    watch = run_cli(tmp_path, "watch", "latest")
+
+    assert watch.returncode == 0, watch.stderr
+    assert f"Run: {run_id}" in watch.stdout
+    assert "Objective: Keep live status readable" in watch.stdout
+    assert "Workflow: research-loop / plan" in watch.stdout
+    assert "Task objective:" not in watch.stdout
+    assert "Execute only this workflow step" not in watch.stdout
 
 
 def test_task_continue_steps_runs_until_step_limit(tmp_path):
@@ -575,8 +874,8 @@ def test_task_continue_steps_runs_until_step_limit(tmp_path):
 
     assert continued.returncode == 0, continued.stderr
     assert "Task runs: 2" in continued.stdout
-    assert "Workflow step: work" in continued.stdout
-    assert "Workflow step: continue" in continued.stdout
+    assert "Step:  work" in continued.stdout
+    assert "Step:  continue" in continued.stdout
     assert inspect.stdout.count("run_") >= 3
 
 
@@ -589,8 +888,8 @@ def test_task_create_steps_runs_initial_workflow_steps(tmp_path):
 
     assert create.returncode == 0, create.stderr
     assert "Task runs: 2" in create.stdout
-    assert "Workflow step: plan" in create.stdout
-    assert "Workflow step: work" in create.stdout
+    assert "Step:  plan" in create.stdout
+    assert "Step:  work" in create.stdout
     assert inspect.stdout.count("run_") >= 2
 
 
@@ -1480,7 +1779,15 @@ def test_deepagents_kernel_invokes_adapter_and_archives_response(tmp_path):
                 "        self.name = name",
                 "",
                 "    def invoke(self, payload):",
-                "        tool_result = self.tools[0](query='adapter smoke')",
+                "        return self._result(payload)",
+                "",
+                "    def stream(self, payload, stream_mode=None, **kwargs):",
+                "        result = self._result(payload)",
+                "        if isinstance(stream_mode, list) and 'updates' in stream_mode:",
+                "            yield ('updates', {'agent': result})",
+                "",
+                "    def _result(self, payload):",
+                "        tool_result = self.tools[0](query='adapter smoke') if self.tools else 'no tools'",
                 "        return {",
                 "            'messages': [FakeMessage('deepagents response\\n' + tool_result)],",
                 "            'files': {'/notes.md': {'content': 'deepagents working file'}}",
@@ -1546,6 +1853,14 @@ def test_task_deepagents_research_loop_archives_model_artifacts(tmp_path):
                 "        self.system_prompt = system_prompt or ''",
                 "",
                 "    def invoke(self, payload):",
+                "        return self._result(payload)",
+                "",
+                "    def stream(self, payload, stream_mode=None, **kwargs):",
+                "        result = self._result(payload)",
+                "        if isinstance(stream_mode, list) and 'updates' in stream_mode:",
+                "            yield ('updates', {'agent': result})",
+                "",
+                "    def _result(self, payload):",
                 "        FakeAgent.calls += 1",
                 "        assert 'research-note.md' in self.system_prompt",
                 "        assert 'next-actions.md' in self.system_prompt",
@@ -1743,6 +2058,254 @@ def test_configure_model_writes_project_config_without_printing_secret(tmp_path)
     assert "Base URL: https://api.siliconflow.cn/v1" in doctor.stdout
     assert "API key: set" in doctor.stdout
     assert "secret-config-key" not in doctor.stdout
+
+
+def test_litellm_init_writes_proxy_config_and_enables_autostart(tmp_path):
+    run_cli(tmp_path, "init")
+
+    result = run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--upstream-base-url",
+        "https://api.openai.example/v1",
+        "--api-shape",
+        "chat_completions",
+        "--proxy-api-key-env",
+        "LITELLM_PROXY_API_KEY",
+    )
+
+    assert result.returncode == 0, result.stderr
+    proxy_config = tmp_path / ".novi" / "litellm" / "config.yaml"
+    proxy_text = proxy_config.read_text(encoding="utf-8")
+    project_text = (tmp_path / ".novi" / "novi.yaml").read_text(encoding="utf-8")
+    assert "model_name: research-primary" in proxy_text
+    assert "model: openai/gpt-4.1-mini" in proxy_text
+    assert "api_key: os.environ/OPENAI_API_KEY" in proxy_text
+    assert "api_base: https://api.openai.example/v1" in proxy_text
+    assert "master_key: os.environ/LITELLM_PROXY_API_KEY" in proxy_text
+    assert "provider: litellm_proxy" in project_text
+    assert "model: research-primary" in project_text
+    assert "base_url: http://localhost:4000/v1" in project_text
+    assert "api_key: os.environ/LITELLM_PROXY_API_KEY" in project_text
+    assert "api_shape: chat_completions" in project_text
+    assert "auto_start: true" in project_text
+    assert "LiteLLM proxy config written" in result.stdout
+    assert "novi litellm start --port 4000" in result.stdout
+
+
+def test_litellm_start_can_print_manual_foreground_command(tmp_path):
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--port",
+        "41997",
+    )
+
+    result = run_cli(tmp_path, "litellm", "start", "--port", "4100", "--print-command")
+
+    assert result.returncode == 0, result.stderr
+    assert "litellm --config" in result.stdout
+    assert ".novi/litellm/config.yaml" in result.stdout
+    assert "--port 4100" in result.stdout
+
+
+def test_litellm_proxy_autostarts_for_deepagents_runs_and_uses_responses_shape(tmp_path, monkeypatch):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake_litellm = bin_dir / "litellm"
+    fake_litellm.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                "echo \"$@\" > \"$PWD/litellm-start.log\"",
+                "exit 0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_litellm.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("NOVI_LITELLM_BIN", str(fake_litellm))
+    monkeypatch.setenv("NOVI_LITELLM_FORCE_START", "1")
+    monkeypatch.setenv("LITELLM_PROXY_API_KEY", "proxy-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "upstream-key")
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "litellm",
+        "init",
+        "--model-name",
+        "research-primary",
+        "--upstream-model",
+        "openai/gpt-4.1-mini",
+        "--upstream-api-key-env",
+        "OPENAI_API_KEY",
+        "--port",
+        "41997",
+    )
+    run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "litellm-proxy",
+        "--model",
+        "research-primary",
+        "--base-url",
+        "http://127.0.0.2:41997/v1",
+        "--api-key",
+        "os.environ/LITELLM_PROXY_API_KEY",
+    )
+    run_cli(tmp_path, "session", "create", "litellm auto start")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke litellm", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+    start_record = (tmp_path / ".novi" / "litellm" / "last_start.yaml").read_text()
+    assert "mode: auto" in start_record
+    assert str(fake_litellm) in start_record
+    assert ".novi/litellm/config.yaml" in start_record
+    assert "- '41997'" in start_record or "- 41997" in start_record
+    assert "model=research-primary" in response_text
+    assert "base_url=http://127.0.0.2:41997/v1" in response_text
+    assert "responses=True" in response_text
+    assert '"model_provider": "litellm_proxy"' in model_calls
+    assert '"model_api_shape": "responses"' in model_calls
+    assert '"litellm_auto_start": true' in model_calls
+    assert "model_provider: litellm_proxy" in request_text
+    assert "model_api_shape: responses" in request_text
+
+
+def test_openai_responses_provider_uses_responses_api_with_project_config(tmp_path):
+    (tmp_path / "deepagents.py").write_text(
+        "\n".join(
+            [
+                "class FakeMessage:",
+                "    def __init__(self, content):",
+                "        self.content = content",
+                "",
+                "class FakeAgent:",
+                "    def __init__(self, model, tools, system_prompt, name=None, **kwargs):",
+                "        self.model = model",
+                "",
+                "    def invoke(self, payload):",
+                "        return {'messages': [FakeMessage(",
+                "            f'model={self.model.model}; base_url={self.model.base_url}; responses={self.model.use_responses_api}'",
+                "        )]}",
+                "",
+                "def create_deep_agent(model, tools=None, system_prompt=None, name=None, **kwargs):",
+                "    return FakeAgent(model, tools or [], system_prompt, name=name, **kwargs)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    package_dir = tmp_path / "langchain_openai"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text(
+        "\n".join(
+            [
+                "class ChatOpenAI:",
+                "    def __init__(self, model, api_key=None, base_url=None, use_responses_api=None):",
+                "        self.model = model",
+                "        self.api_key = api_key",
+                "        self.base_url = base_url",
+                "        self.use_responses_api = use_responses_api",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_cli(tmp_path, "init")
+    run_cli(
+        tmp_path,
+        "configure",
+        "model",
+        "openai-responses",
+        "--model",
+        "gpt-4.1-mini",
+        "--base-url",
+        "https://api.openai.test/v1",
+        "--api-key",
+        "secret-responses-key",
+    )
+    run_cli(tmp_path, "session", "create", "responses run")
+
+    result = run_cli(tmp_path, "run", "start", "research", "invoke responses", "--kernel", "deepagents")
+
+    assert result.returncode == 0, result.stderr
+    run_id = parse_id(result.stdout, "run_")
+    run_dir = tmp_path / ".novi" / "runs" / run_id
+    response_text = (run_dir / "response.md").read_text()
+    model_calls = (run_dir / "model_calls.jsonl").read_text()
+    request_text = (run_dir / "model_request.yaml").read_text()
+    assert "model=gpt-4.1-mini" in response_text
+    assert "base_url=https://api.openai.test/v1" in response_text
+    assert "responses=True" in response_text
+    assert '"model_provider": "openai_responses"' in model_calls
+    assert '"model_api_shape": "responses"' in model_calls
+    assert "model_provider: openai_responses" in request_text
+    assert "model_api_shape: responses" in request_text
+    assert "secret-responses-key" not in request_text
 
 
 def test_ask_records_messages_and_includes_recent_context(tmp_path):
@@ -2043,7 +2606,10 @@ def test_run_archives_compiled_kernel_bindings(tmp_path):
     assert '"agent_id": "agent_orchestrator"' in binding_text
     assert '"authority_level": "collaborator"' in binding_text
     assert '"kernel": "simple"' in binding_text
-    assert '"tool_names": ["search_stub_query"]' in binding_text
+    assert '"search_stub_query"' in binding_text
+    assert '"filesystem_write"' in binding_text
+    assert '"shell_run"' in binding_text
+    assert '"artifact_save"' in binding_text
     assert "Kernel bindings:" in inspect_result.stdout
     assert "agent_orchestrator simple" in inspect_result.stdout
     assert "Kernel bindings:" in trace_result.stdout

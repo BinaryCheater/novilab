@@ -1,6 +1,8 @@
 import argparse
 import os
+import shlex
 import sys
+import time
 from pathlib import Path
 
 from rich.console import Console
@@ -15,10 +17,12 @@ from .agents import (
     remove_agent_list_value,
     set_agent_model,
 )
+from .litellm_proxy import litellm_start_command, run_litellm_proxy, write_litellm_proxy_config
 from .processing import process_imported_document, process_imported_documents
 from .runner import start_deterministic_run
 from .skills import discover_skills
 from .store import (
+    append_jsonl,
     accepted_knowledge,
     agent_review_contribution,
     apply_patch_contribution,
@@ -49,6 +53,7 @@ from .store import (
     request_changes_contribution,
     require_workspace,
     save_task,
+    utc_now,
     update_project_config,
 )
 from .tools import execute_tool, expose_tool_to_agent, list_tools, load_tool
@@ -58,6 +63,7 @@ from .workflows import (
     initial_workflow_state,
     list_workflows,
     load_workflow,
+    workflow_step_by_id,
     workflow_round_size,
     workflow_step_instruction,
 )
@@ -236,13 +242,14 @@ def _parse_arg_values(values):
 
 
 def cmd_tool_call(args):
-    agent = load_agent(Path.cwd(), args.agent_id)
+    agent = load_agent(Path.cwd(), args.agent_id or "agent_orchestrator")
     participant = {
         "agent_id": agent["id"],
         "tool_scope": list(agent.get("tool_scope", [])),
     }
     call = execute_tool(Path.cwd(), "manual", participant, args.tool_id, _parse_arg_values(args.arg))
     print(f"{call['tool_id']} {call['status']} {call.get('block_reason') or call.get('risk', '-')}")
+    print(f"agent: {agent['id']}")
     if call.get("result_ref"):
         for key, value in call["result_ref"].items():
             print(f"{key}: {value}")
@@ -338,6 +345,73 @@ def _prepare_task_step(root, task):
     return workflow, state, step, workflow_step_instruction(workflow, task, step)
 
 
+def _print_step_contract(step):
+    if step.get("required_tools"):
+        print(f"Required tools: {', '.join(step.get('required_tools', []))}")
+    if step.get("expected_files"):
+        print(f"Expected files: {', '.join(step.get('expected_files', []))}")
+    if step.get("expected_artifacts"):
+        print(f"Expected artifacts: {', '.join(step.get('expected_artifacts', []))}")
+    if step.get("continue_from"):
+        print(f"Continue from: {', '.join(step.get('continue_from', []))}")
+
+
+def _artifact_types_for_run(root, run_id):
+    run_dir = _run_dir(root, run_id)
+    return {read_yaml(path, {}).get("type") for path in sorted((run_dir / "artifacts").glob("*.yaml"))}
+
+
+def _print_expected_status(root, step, run_id=None):
+    if not step:
+        return
+    expected_files = step.get("expected_files", [])
+    expected_artifacts = step.get("expected_artifacts", [])
+    if not expected_files and not expected_artifacts:
+        return
+    print("Expected outputs:")
+    workspace = Path(root).resolve()
+    for raw_path in expected_files:
+        path = (workspace / raw_path).resolve()
+        status = "ok" if str(path).startswith(str(workspace)) and path.is_file() else "missing"
+        print(f"- file {status}: {raw_path}")
+    artifact_types = _artifact_types_for_run(root, run_id) if run_id else set()
+    for artifact_type in expected_artifacts:
+        status = "ok" if artifact_type in artifact_types else "missing"
+        print(f"- artifact {status}: {artifact_type}")
+
+
+def _task_guidance_path(root, task_id):
+    return require_workspace(root) / "tasks" / task_id / "guidance.jsonl"
+
+
+def _append_task_guidance(root, task, kind, text):
+    record = {
+        "id": f"{kind}_{utc_now().replace('-', '').replace(':', '').replace('.', '_')}",
+        "type": kind,
+        "text": text,
+        "created_at": utc_now(),
+        "actor": "local_user",
+    }
+    guidance = list(task.get("human_guidance", []))
+    guidance.append(record)
+    task["human_guidance"] = guidance
+    if kind == "amendment":
+        task["objective"] = text
+    save_task(root, task)
+    append_jsonl(_task_guidance_path(root, task["id"]), record)
+    return record
+
+
+def _print_human_guidance(task):
+    guidance = list(task.get("human_guidance", []))
+    if not guidance:
+        return
+    print("Human guidance:")
+    for item in guidance[-8:]:
+        label = "amendment" if item.get("type") == "amendment" else "note"
+        print(f"- {label}: {item.get('text', '')}")
+
+
 def _finish_task_step(root, task, workflow, step, run):
     state = advance_workflow_state(workflow, task.get("workflow_state"), step["id"])
     task["workflow_state"] = state
@@ -350,7 +424,15 @@ def _finish_task_step(root, task, workflow, step, run):
 def _run_task_step(root, task, session, args):
     workflow, _state, step, instruction = _prepare_task_step(root, task)
     agents = [load_agent(root, agent_id) for agent_id in args.agent]
-    print(f"Workflow step: {step['id']} - {step.get('title', step['id'])}")
+    # outer frame
+    print()
+    print("=" * 48)
+    print(f"Task:  {task.get('objective', task['id'])}")
+    print(f"ID:    {task['id']}")
+    print(f"Step:  {step['id']} ─ {step.get('title', step['id'])}")
+    print(f"Round: {int(task.get('workflow_state', {}).get('iteration') or 0) + 1}")
+    print("=" * 48)
+    _print_step_contract(step)
     run = start_deterministic_run(
         root,
         session,
@@ -399,14 +481,57 @@ def cmd_task(args):
         state = task.get("workflow_state") or {}
         print(f"Current step: {state.get('current_step_id') or '-'}")
         print(f"Completed steps: {', '.join(state.get('completed_step_ids', [])) or '-'}")
+        _print_human_guidance(task)
+        try:
+            workflow = load_workflow(root, task.get("workflow_id", "research-loop"))
+            step = current_workflow_step(workflow, state)
+            if step:
+                _print_step_contract(step)
+                _print_expected_status(root, step, run_id=task.get("current_run_id"))
+        except RuntimeError:
+            pass
         print("Runs:")
         for run_id in task.get("run_ids", []):
             print(f"- {run_id}")
+        return 0
+    if args.task_args and args.task_args[0] == "note":
+        if len(args.task_args) < 3:
+            raise RuntimeError("Usage: novi task note <task_id> <text>")
+        task = load_task(root, args.task_args[1])
+        record = _append_task_guidance(root, task, "note", " ".join(args.task_args[2:]).strip())
+        print(f"Task note: {task['id']}")
+        print(record["text"])
+        return 0
+    if args.task_args and args.task_args[0] == "amend":
+        if len(args.task_args) < 3:
+            raise RuntimeError("Usage: novi task amend <task_id> <objective>")
+        task = load_task(root, args.task_args[1])
+        record = _append_task_guidance(root, task, "amendment", " ".join(args.task_args[2:]).strip())
+        print(f"Task amended: {task['id']}")
+        print(record["text"])
+        return 0
+    if args.task_args and args.task_args[0] == "pause":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task pause <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "paused"
+        save_task(root, task)
+        print(f"Task paused: {task['id']}")
+        return 0
+    if args.task_args and args.task_args[0] == "resume":
+        if len(args.task_args) < 2:
+            raise RuntimeError("Usage: novi task resume <task_id>")
+        task = load_task(root, args.task_args[1])
+        task["status"] = "active"
+        save_task(root, task)
+        print(f"Task resumed: {task['id']}")
         return 0
     if args.task_args and args.task_args[0] in {"continue", "run"}:
         if len(args.task_args) < 2:
             raise RuntimeError("Usage: novi task continue <task_id>")
         task = load_task(root, args.task_args[1])
+        if task.get("status") == "paused":
+            raise RuntimeError(f"Task {task['id']} is paused. Run `novi task resume {task['id']}` before continuing.")
         pending = _pending_contributions(root, task_id=task["id"])
         if pending:
             ids = ", ".join(item["id"] for item in pending)
@@ -622,6 +747,176 @@ def cmd_run_trace(args):
     for binding in bindings:
         print(f"- {binding.get('agent_id')} {binding.get('kernel')} {binding.get('binding')}")
     return 0
+
+
+def _print_watch_snapshot(root, run_id):
+    run = load_run(root, run_id)
+    if not run:
+        raise RuntimeError(f"Run not found: {run_id}")
+    run_dir = _run_dir(root, run_id)
+    task = None
+    if run.get("task_id"):
+        try:
+            task = load_task(root, run["task_id"])
+        except RuntimeError:
+            task = None
+    print(f"Run: {run_id}")
+    print(f"Status: {run.get('status', '-')}")
+    if run.get("workflow_id"):
+        print(f"Workflow: {run.get('workflow_id')} / {run.get('workflow_step_id') or '-'}")
+    if task:
+        print(f"Task: {task.get('id', run.get('task_id'))}")
+        print(f"Objective: {task.get('objective', '-')}")
+    else:
+        print(f"Objective: {run.get('objective', '-')}")
+    print("")
+    print("Events:")
+    events = read_jsonl(run_dir / "events.jsonl")
+    if not events:
+        print("- none")
+    for event in events[-12:]:
+        print(f"- {event.get('created_at', '-')} {event.get('type', '-')}: {event.get('summary') or event.get('message') or '-'}")
+    print("")
+    print("Model calls:")
+    model_calls = read_jsonl(run_dir / "model_calls.jsonl")
+    if not model_calls:
+        print("- none")
+    for call in model_calls[-5:]:
+        print(f"- {call.get('status', '-')} {call.get('kernel', '-')} {call.get('model_provider', '-')}/{call.get('model_profile', '-')}")
+        if call.get("error"):
+            print(f"  error: {call['error']}")
+    print("")
+    print("Tool calls:")
+    tool_calls = read_jsonl(run_dir / "tool_calls.jsonl")
+    if not tool_calls:
+        print("- none")
+    for call in tool_calls[-10:]:
+        result = call.get("result_ref", {}) or {}
+        detail = result.get("returncode", result.get("path", call.get("block_reason", "")))
+        print(f"- {call.get('tool_id')} {call.get('status')} {detail}")
+    print("")
+    print("Artifacts:")
+    artifact_paths = sorted((run_dir / "artifacts").glob("*.yaml"))
+    if not artifact_paths:
+        print("- none")
+    for artifact_path in artifact_paths[-12:]:
+        artifact = read_yaml(artifact_path, {})
+        print(f"- {artifact.get('id')} {artifact.get('type', '-')} {artifact.get('path', '-')}")
+    return run
+
+
+def cmd_watch(args):
+    root = Path.cwd()
+    run_id = _run_id_arg(root, args.run_id)
+    while True:
+        run = _print_watch_snapshot(root, run_id)
+        if not args.follow or run.get("status") in {"completed", "failed", "error", "blocked"}:
+            return 0
+        time.sleep(max(args.interval, 0))
+
+
+def _workspace_relative_path(root, raw_path):
+    if not raw_path:
+        raise RuntimeError("Path is required.")
+    path = Path(raw_path)
+    if path.parts and path.parts[0] in {"experiment", "experiments"}:
+        raise RuntimeError("Refusing to create Novi templates under experiment/ or experiments/. Pass an explicit scratch path outside those folders.")
+    workspace = Path(root).resolve()
+    requested = path.resolve() if path.is_absolute() else (workspace / path).resolve()
+    if not str(requested).startswith(str(workspace)):
+        raise RuntimeError("Path must be inside the current workspace.")
+    return requested, str(requested.relative_to(workspace))
+
+
+def cmd_experiment_init(args):
+    root = Path.cwd()
+    require_workspace(root)
+    path, relative = _workspace_relative_path(root, args.path)
+    path.mkdir(parents=True, exist_ok=True)
+    outputs_dir = path / "outputs"
+    outputs_dir.mkdir(exist_ok=True)
+    readme = path / "README.md"
+    run_sh = path / "run.sh"
+    metrics = path / "metrics.md"
+    notes = path / "notes.md"
+    if not readme.exists():
+        readme.write_text(
+            "\n".join(
+                [
+                    f"# {Path(relative).name}",
+                    "",
+                    "## Purpose",
+                    "",
+                    "State the question this experiment answers.",
+                    "",
+                    "## Run",
+                    "",
+                    "```bash",
+                    "./run.sh",
+                    "```",
+                    "",
+                    "## Expected Outputs",
+                    "",
+                    "- `outputs/` contains raw or derived result files.",
+                    "- `metrics.md` summarizes metrics, failures, and next checks.",
+                    "- `notes.md` records interpretation and follow-up questions.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+    if not run_sh.exists():
+        run_sh.write_text(
+            "#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p outputs\nprintf '# Metrics\\n\\n- status: draft\\n' > metrics.md\nprintf '# Notes\\n\\n- observation: fill me in\\n' > notes.md\n",
+            encoding="utf-8",
+        )
+        run_sh.chmod(0o755)
+    if not metrics.exists():
+        metrics.write_text("# Metrics\n\n- status: draft\n", encoding="utf-8")
+    if not notes.exists():
+        notes.write_text("# Notes\n\n- observation: draft\n", encoding="utf-8")
+    print(f"Experiment: {relative}")
+    print(f"Run: {relative}/run.sh")
+    print(f"Outputs: {relative}/outputs")
+    return 0
+
+
+def cmd_run_check(args):
+    root = Path.cwd()
+    run_id = _run_id_arg(root, args.run_id)
+    run_dir = _run_dir(root, run_id)
+    if not (run_dir / "run.yaml").exists():
+        raise RuntimeError(f"Run not found: {run_id}")
+    run = load_run(root, run_id)
+    failed = False
+    require_files = list(args.require_file)
+    require_artifacts = list(args.require_artifact)
+    if args.from_workflow:
+        workflow_id = run.get("workflow_id")
+        step_id = run.get("workflow_step_id")
+        if workflow_id and step_id:
+            workflow = load_workflow(root, workflow_id)
+            step = workflow_step_by_id(workflow, step_id)
+            if step:
+                require_files.extend(step.get("expected_files", []))
+                require_artifacts.extend(step.get("expected_artifacts", []))
+    workspace = Path(root).resolve()
+    for raw_path in dict.fromkeys(require_files):
+        path = (workspace / raw_path).resolve()
+        if str(path).startswith(str(workspace)) and path.is_file():
+            print(f"file ok: {raw_path}")
+        else:
+            print(f"file missing: {raw_path}")
+            failed = True
+    artifact_records = [read_yaml(path, {}) for path in sorted((run_dir / "artifacts").glob("*.yaml"))]
+    artifact_types = {record.get("type") for record in artifact_records}
+    for artifact_type in dict.fromkeys(require_artifacts):
+        if artifact_type in artifact_types:
+            print(f"artifact ok: {artifact_type}")
+        else:
+            print(f"artifact missing: {artifact_type}")
+            failed = True
+    return 1 if failed else 0
 
 
 def cmd_memory_review(args):
@@ -1134,6 +1429,15 @@ def _configured_model_from_args(args):
             "base_url": args.base_url,
             "api_key": args.api_key,
         }
+    if args.provider == "litellm-proxy":
+        return {
+            "provider": "litellm_proxy",
+            "model": args.model,
+            "base_url": args.base_url or "http://localhost:4000/v1",
+            "api_key": args.api_key,
+            "api_shape": args.api_shape,
+            "auto_start": not args.no_auto_start,
+        }
     raise RuntimeError(f"Unknown model provider: {args.provider}")
 
 
@@ -1160,6 +1464,35 @@ def cmd_doctor_model(args):
     return 0
 
 
+def cmd_litellm_init(args):
+    path = write_litellm_proxy_config(
+        Path.cwd(),
+        model_name=args.model_name,
+        upstream_model=args.upstream_model,
+        upstream_api_key_env=args.upstream_api_key_env,
+        upstream_base_url=args.upstream_base_url,
+        proxy_api_key_env=args.proxy_api_key_env,
+        port=args.port,
+        api_shape=args.api_shape,
+    )
+    print(f"LiteLLM proxy config written: {path}")
+    print(f"Configured model provider: litellm_proxy")
+    print(f"Model alias: {args.model_name}")
+    print(f"Base URL: http://localhost:{args.port}/v1")
+    print(f"API shape: {args.api_shape}")
+    print(f"Auto start: enabled")
+    print(f"Manual start: novi litellm start --port {args.port}")
+    return 0
+
+
+def cmd_litellm_start(args):
+    command = litellm_start_command(Path.cwd(), port=args.port)
+    if args.print_command:
+        print(" ".join(shlex.quote(part) for part in command))
+        return 0
+    return run_litellm_proxy(Path.cwd(), port=args.port)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="novi")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1172,6 +1505,18 @@ def build_parser():
 
     ps_parser = subparsers.add_parser("ps")
     ps_parser.set_defaults(func=cmd_ps)
+
+    watch_parser = subparsers.add_parser("watch")
+    watch_parser.add_argument("run_id", nargs="?", default="latest")
+    watch_parser.add_argument("--follow", action="store_true")
+    watch_parser.add_argument("--interval", type=float, default=2.0)
+    watch_parser.set_defaults(func=cmd_watch)
+
+    experiment_parser = subparsers.add_parser("experiment")
+    experiment_sub = experiment_parser.add_subparsers(dest="experiment_command", required=True)
+    experiment_init = experiment_sub.add_parser("init")
+    experiment_init.add_argument("path")
+    experiment_init.set_defaults(func=cmd_experiment_init)
 
     import_parser = subparsers.add_parser("import")
     import_parser.add_argument("source")
@@ -1228,11 +1573,29 @@ def build_parser():
     configure_parser = subparsers.add_parser("configure")
     configure_sub = configure_parser.add_subparsers(dest="configure_command", required=True)
     configure_model = configure_sub.add_parser("model")
-    configure_model.add_argument("provider", choices=["siliconflow", "openai-chat", "openai-responses"])
+    configure_model.add_argument("provider", choices=["siliconflow", "openai-chat", "openai-responses", "litellm-proxy"])
     configure_model.add_argument("--model", required=True)
     configure_model.add_argument("--api-key")
     configure_model.add_argument("--base-url")
+    configure_model.add_argument("--api-shape", choices=["responses", "chat_completions"], default="responses")
+    configure_model.add_argument("--no-auto-start", action="store_true")
     configure_model.set_defaults(func=cmd_configure_model)
+
+    litellm_parser = subparsers.add_parser("litellm")
+    litellm_sub = litellm_parser.add_subparsers(dest="litellm_command", required=True)
+    litellm_init = litellm_sub.add_parser("init")
+    litellm_init.add_argument("--model-name", required=True)
+    litellm_init.add_argument("--upstream-model", required=True)
+    litellm_init.add_argument("--upstream-api-key-env", required=True)
+    litellm_init.add_argument("--upstream-base-url")
+    litellm_init.add_argument("--proxy-api-key-env", default="LITELLM_PROXY_API_KEY")
+    litellm_init.add_argument("--api-shape", choices=["responses", "chat_completions"], default="responses")
+    litellm_init.add_argument("--port", type=int, default=4000)
+    litellm_init.set_defaults(func=cmd_litellm_init)
+    litellm_start = litellm_sub.add_parser("start")
+    litellm_start.add_argument("--port", type=int, default=4000)
+    litellm_start.add_argument("--print-command", action="store_true")
+    litellm_start.set_defaults(func=cmd_litellm_start)
 
     ask_parser = subparsers.add_parser("ask")
     ask_parser.add_argument("message")
@@ -1313,7 +1676,7 @@ def build_parser():
     tool_expose.set_defaults(func=cmd_tool_expose)
     tool_call = tool_sub.add_parser("call")
     tool_call.add_argument("tool_id")
-    tool_call.add_argument("--agent", dest="agent_id", required=True)
+    tool_call.add_argument("--agent", dest="agent_id")
     tool_call.add_argument("--arg", action="append", default=[])
     tool_call.set_defaults(func=cmd_tool_call)
 
@@ -1353,6 +1716,12 @@ def build_parser():
     run_trace = run_sub.add_parser("trace")
     run_trace.add_argument("run_id")
     run_trace.set_defaults(func=cmd_run_trace)
+    run_check = run_sub.add_parser("check")
+    run_check.add_argument("run_id")
+    run_check.add_argument("--require-file", action="append", default=[])
+    run_check.add_argument("--require-artifact", action="append", default=[])
+    run_check.add_argument("--from-workflow", action="store_true")
+    run_check.set_defaults(func=cmd_run_check)
 
     memory_parser = subparsers.add_parser("memory")
     memory_sub = memory_parser.add_subparsers(dest="memory_command", required=True)

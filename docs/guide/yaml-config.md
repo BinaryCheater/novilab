@@ -17,10 +17,29 @@ model:
   api_key: ...
 ```
 
+LiteLLM proxy 配置示例：
+
+```yaml
+model:
+  provider: litellm_proxy
+  model: research-primary
+  base_url: http://localhost:4000/v1
+  api_key: os.environ/LITELLM_PROXY_API_KEY
+  api_shape: responses
+  auto_start: true
+```
+
+对应 gateway 配置位于：
+
+```text
+.novi/litellm/config.yaml
+```
+
 修改方式：
 
 ```bash
 novi configure model siliconflow --model "..." --api-key "..."
+novi litellm init --model-name research-primary --upstream-model openai/gpt-4.1-mini --upstream-api-key-env OPENAI_API_KEY
 novi doctor model
 ```
 

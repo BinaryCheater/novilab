@@ -82,6 +82,41 @@ def _tool_wrapper(root, run_dir, run_id, participant, tool_id):
 
         return filesystem_read
 
+    if tool_id == "filesystem.write":
+        def filesystem_write(path: str = "", content: str = "") -> str:
+            """Write a UTF-8 text file inside the Novi workspace through ToolRuntime."""
+            return record_call({"path": path, "content": content})
+
+        return filesystem_write
+
+    if tool_id == "filesystem.list":
+        def filesystem_list(path: str = ".") -> str:
+            """List files and directories inside the Novi workspace through ToolRuntime."""
+            return record_call({"path": path})
+
+        return filesystem_list
+
+    if tool_id == "shell.run":
+        def shell_run(command: str = "", cwd: str = ".", timeout: int = 60, allow_failure: bool = False) -> str:
+            """Run a shell command from the Novi workspace and capture stdout/stderr."""
+            return record_call({"command": command, "cwd": cwd, "timeout": timeout, "allow_failure": allow_failure})
+
+        return shell_run
+
+    if tool_id == "web.fetch":
+        def web_fetch(url: str = "", timeout: int = 30) -> str:
+            """Fetch a URL and capture the response body as a Novi artifact."""
+            return record_call({"url": url, "timeout": timeout})
+
+        return web_fetch
+
+    if tool_id == "artifact.save":
+        def artifact_save(path: str = "", artifact_type: str = "saved_file") -> str:
+            """Copy a workspace file into the Novi artifact store."""
+            return record_call({"path": path, "artifact_type": artifact_type})
+
+        return artifact_save
+
     if tool_id == "git.status":
         def git_status() -> str:
             """Read git status for the Novi workspace through ToolRuntime."""
@@ -225,6 +260,119 @@ def _archive_response_artifact(run_dir, run_record, response_path):
     return artifact_id
 
 
+def _format_tool_arg_summary(args_str, max_len=80):
+    try:
+        parsed = json.loads(args_str)
+    except (json.JSONDecodeError, TypeError):
+        return args_str[:max_len]
+    parts = []
+    for k, v in parsed.items():
+        s = str(v)
+        if len(s) > 40:
+            s = s[:37] + "..."
+        parts.append(f"{k}={s}")
+    return ", ".join(parts)[:max_len]
+
+
+def _run_streamed_deepagent(agent, agent_input, run_dir, run_record, participant, prompt_path, model_record, started_at):
+    from langchain_core.messages import AIMessageChunk, ToolMessage
+
+    print(f"Model: {model_record.get('provider', '?')} {model_record.get('model', '?')}")
+    print("─" * 48)
+
+    tool_name_buf = {}
+    tool_args_buf = {}
+    in_text = False
+    all_messages = []
+    final_files = {}
+    response_text = ""
+    current_text = []
+
+    for event in agent.stream(agent_input, stream_mode=["messages", "updates"]):
+        mode, data = event
+
+        if mode == "messages":
+            chunk, metadata = data
+            node = metadata.get("langgraph_node", "")
+
+            if isinstance(chunk, AIMessageChunk):
+                # ---- text tokens ----
+                content = chunk.content
+                if isinstance(content, list):
+                    content = "".join(str(c) for c in content if isinstance(c, str))
+                if content:
+                    if not in_text:
+                        if current_text:
+                            print()
+                            response_text += "\n"
+                        print("💬 ", end="")
+                        in_text = True
+                    print(content, end="", flush=True)
+                    current_text.append(content)
+
+                # ---- tool call chunks ----
+                if chunk.tool_call_chunks:
+                    if in_text:
+                        print()
+                        response_text += "\n" + "".join(current_text) + "\n"
+                        current_text = []
+                        in_text = False
+                    for tc in chunk.tool_call_chunks:
+                        idx = tc.get("index", 0)
+                        if idx not in tool_name_buf:
+                            tool_name_buf[idx] = ""
+                            tool_args_buf[idx] = ""
+                        if tc.get("name"):
+                            tool_name_buf[idx] = tc["name"]
+                        if tc.get("args"):
+                            tool_args_buf[idx] += tc["args"]
+                    # print completed tool calls (name + args both present)
+                    done = []
+                    for idx in list(tool_name_buf):
+                        if tool_name_buf[idx] and tool_args_buf[idx]:
+                            summary = _format_tool_arg_summary(tool_args_buf[idx])
+                            print(f"🔧 {tool_name_buf[idx]}({summary})")
+                            done.append(idx)
+                    for idx in done:
+                        del tool_name_buf[idx]
+                        del tool_args_buf[idx]
+
+            elif isinstance(chunk, ToolMessage):
+                if in_text:
+                    print()
+                    response_text += "\n" + "".join(current_text) + "\n"
+                    current_text = []
+                    in_text = False
+                tc_id = chunk.tool_call_id or ""
+                result_str = str(chunk.content) if chunk.content else "(empty)"
+                preview = result_str[:120].replace("\n", " ")
+                if len(result_str) > 120:
+                    preview += "..."
+                status = chunk.status if hasattr(chunk, "status") else ""
+                if "error" in str(status).lower():
+                    print(f"   ❌ [{tc_id}] {preview}")
+                else:
+                    print(f"   ✅ {preview}")
+
+        elif mode == "updates":
+            for _node_name, update in data.items():
+                if "messages" in update:
+                    all_messages = list(update["messages"]) if isinstance(update["messages"], list) else [update["messages"]]
+                if "files" in update:
+                    final_files = dict(update["files"])
+
+    if current_text and in_text:
+        response_text += "".join(current_text)
+
+    if not response_text:
+        response_text = _extract_response_text({"messages": all_messages})
+
+    print()
+    print("─" * 48)
+    print("✅ Model response complete")
+    return {"messages": all_messages, "files": final_files}, response_text, all_messages, final_files
+
+
 def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
     deepagents = require_deepagents_kernel()
     create_deep_agent = getattr(deepagents, "create_deep_agent")
@@ -246,8 +394,14 @@ def run_deepagents_kernel(root, run_dir, run_record, prompt_path):
             system_prompt=prompt_text,
             name=participant.get("agent_id"),
         )
-        result = agent.invoke({"messages": messages})
-        response_text = _extract_response_text(result)
+        if hasattr(agent, "stream"):
+            result, response_text, all_messages, final_files = _run_streamed_deepagent(
+                agent, {"messages": messages},
+                run_dir, run_record, participant, prompt_path, model_record, started_at,
+            )
+        else:
+            result = agent.invoke({"messages": messages})
+            response_text = _extract_response_text(result)
         messages_path = _archive_deepagents_messages(run_dir, result)
         exported_files = _export_deepagents_files(run_dir, run_record, result)
         response_path.write_text(f"# Model Response\n\n{response_text}\n", encoding="utf-8")
