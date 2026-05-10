@@ -9,14 +9,15 @@ The specs are written for editing, not as final documentation. Prefer changing t
 Read in this order:
 
 1. `v0-scope.md`: narrows the first useful build.
-2. `architecture.md`: defines the core product shape and system boundaries.
-3. `tooling-and-modules.md`: discusses candidate tools and module boundaries.
-4. `exploration.md`: records the integrated design exploration for configurable agents, workflow iteration, collaboration, and scientific memory.
-5. `features.md`: summarizes product features and priorities.
-6. `roadmap.md`: outlines directional roadmap phases.
-7. `data-model.md`: defines durable objects and records.
-8. `cli.md`: defines the first user-facing command surface.
-9. `open-questions.md`: lists decisions that still need confirmation.
+2. `philosophy.md`: defines the feedback-governed research-agent philosophy that should guide post-Phase 1 revisions.
+3. `architecture.md`: defines the core product shape and system boundaries.
+4. `tooling-and-modules.md`: discusses candidate tools and module boundaries.
+5. `exploration.md`: records the integrated design exploration for configurable agents, workflow iteration, collaboration, and scientific memory.
+6. `features.md`: summarizes product features and priorities.
+7. `roadmap.md`: outlines directional roadmap phases.
+8. `data-model.md`: defines durable objects and records.
+9. `cli.md`: defines the first user-facing command surface.
+10. `open-questions.md`: lists decisions that still need confirmation.
 
 ## Source Background
 
